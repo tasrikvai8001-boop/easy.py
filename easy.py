@@ -1636,7 +1636,7 @@ def handle_all_messages(message):
             markup = InlineKeyboardMarkup(row_width=2)
             markup.add(
                 ibtn("👑 Make Sub-Admin", callback_data="btn_mod_u", style="primary"),
-                ibtn("👤 Remove Sub-Admin", callback.data="btn_unmod_u", style="danger")
+                ibtn("👤 Remove Sub-Admin", callback_data="btn_unmod_u", style="danger")
             )
             bot.send_message(message.chat.id, "👑 **সাব-এডমিন ম্যানেজমেন্ট:**", reply_markup=markup)
 
