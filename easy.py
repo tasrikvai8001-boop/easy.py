@@ -11,6 +11,8 @@ import threading
 import traceback
 import smtplib
 import pyotp
+import csv
+import io
 from datetime import datetime
 
 # --- AUTOMATIC DEPENDENCY CHECK ---
@@ -298,7 +300,6 @@ def append_to_google_sheet(service_type, row_data):
 
         sh = client.open_by_key(sheet_id)
         
-        # Flexibly match Sheet Tab Name
         target_sheet = None
         for ws in sh.worksheets():
             w_title = ws.title.strip().lower()
@@ -348,7 +349,6 @@ def sync_sheet_approvals():
                         c.execute("UPDATE pending_submissions SET status='approved' WHERE id=?", (sub_id,))
                         c.execute("UPDATE users SET balance = balance + ?, total_income = total_income + ?, approved_tasks = approved_tasks + 1, pending_tasks = MAX(0, pending_tasks - 1) WHERE user_id=?", (rate, rate, uid))
                         
-                        # Referral Lifetime 10% Bonus Logic
                         c.execute("SELECT referred_by FROM users WHERE user_id=?", (uid,))
                         u_ref = c.fetchone()
                         if u_ref and u_ref[0]:
@@ -391,7 +391,7 @@ def verify_gmail_smtp(email):
         return code == 250
     except Exception as e:
         log_error(f"SMTP Verification Warning for {email}: {e}")
-        return True # Fallback grant on network timeout
+        return True
 
 # ============================================
 # --- TELEBOT STYLISH COLOR BUTTON PATCH ---
@@ -472,6 +472,38 @@ def get_daily_support_count(user_id):
     cnt = c.fetchone()[0]
     conn.close()
     return cnt
+
+def export_unsold_csv(service_type):
+    conn = get_db()
+    c = conn.cursor()
+    c.execute("SELECT id, user_id, payload, created_at FROM pending_submissions WHERE sub_type=? AND status='pending'", (service_type,))
+    records = c.fetchall()
+    conn.close()
+
+    output = io.StringIO()
+    writer = csv.writer(output)
+
+    if service_type == "ins":
+        writer.writerow(["Submit_ID", "User_ID", "Username", "Password", "2FA_Secret", "Code", "Created_At"])
+        for r in records:
+            p = json.loads(r['payload'] or '{}')
+            t_str = datetime.fromtimestamp(r['created_at']).strftime("%Y-%m-%d %H:%M:%S")
+            writer.writerow([r['id'], r['user_id'], p.get('username'), p.get('pass'), p.get('2fa'), p.get('code'), t_str])
+    elif service_type == "fb":
+        writer.writerow(["Submit_ID", "User_ID", "First_Name", "Last_Name", "FB_UID", "Password", "Cookie", "Created_At"])
+        for r in records:
+            p = json.loads(r['payload'] or '{}')
+            t_str = datetime.fromtimestamp(r['created_at']).strftime("%Y-%m-%d %H:%M:%S")
+            writer.writerow([r['id'], r['user_id'], p.get('fn'), p.get('ln'), p.get('uid'), p.get('pass'), p.get('cookie'), t_str])
+    elif service_type == "gmail":
+        writer.writerow(["Submit_ID", "User_ID", "Email", "Password", "Recovery_Email", "Created_At"])
+        rec_email = get_config("recovery_email", "tasrikvai8001@gmail.com")
+        for r in records:
+            p = json.loads(r['payload'] or '{}')
+            t_str = datetime.fromtimestamp(r['created_at']).strftime("%Y-%m-%d %H:%M:%S")
+            writer.writerow([r['id'], r['user_id'], p.get('email'), p.get('pass'), rec_email, t_str])
+
+    return output.getvalue()
 
 # ============================================
 # --- CAPTCHA GENERATOR & FORCE JOIN ---
@@ -558,7 +590,7 @@ def get_admin_menu():
 def automated_reengagement_cron():
     while True:
         try:
-            time.sleep(86400) # Runs daily
+            time.sleep(86400)
             conn = get_db()
             c = conn.cursor()
             three_days_ago = time.time() - (3 * 86400)
@@ -602,12 +634,10 @@ def send_welcome(message):
                 ref_user = get_user_db(int(ref_id))
                 if u.get("ip_address") and u.get("ip_address") == ref_user.get("ip_address"):
                     bot.send_message(uid, f"{get_emoji('warning')} **সতর্কবার্তা:** একই ডিভাইস/নেটওয়ার্ক থেকে একাধিক অ্যাকাউন্ট খোলা সনাক্ত হয়েছে! রেফার বোনাস যোগ হবে না।")
-                    # Alert Admin
                     bot.send_message(ADMIN_ID, f"🚨 **Multi-Account Alert!**\nUser `{uid}` joined via Ref `{ref_id}` from the same Network/IP!")
                 else:
                     update_user_field(uid, "referred_by", int(ref_id))
 
-        # 1. Captcha Challenge Verification
         question, ans = generate_captcha()
         temp = json.loads(u["temp_data"] or "{}")
         temp["captcha_ans"] = ans
@@ -628,7 +658,6 @@ def handle_all_messages(message):
         txt = message.text.strip() if message.text else ""
         u = get_user_db(uid)
 
-        # Captcha Check First
         state = u.get("state")
         if state == "verify_captcha":
             temp = json.loads(u["temp_data"] or "{}")
@@ -637,7 +666,6 @@ def handle_all_messages(message):
                 update_user_field(uid, "state", None)
                 bot.send_message(message.chat.id, "✅ **ক্যাপচা ভেরিফিকেশন সফল হয়েছে!**")
                 
-                # Check Referral Notification
                 if u.get("referred_by") and u.get("ref_rewarded") == 0:
                     ref_id = u.get("referred_by")
                     fname = message.from_user.first_name
@@ -647,7 +675,6 @@ def handle_all_messages(message):
                     try: bot.send_message(ref_id, ref_msg, parse_mode="Markdown")
                     except: pass
                 
-                # Force Join Guard after Captcha
                 if not check_force_join(uid):
                     msg = f"👋 **Welcome to {BOT_NAME}!**\n\nবটের কাজ করার জন্য নিচের চ্যানেলগুলোতে জয়েন করুন এবং 'Verify Now' চাপুন:"
                     bot.send_message(message.chat.id, msg, parse_mode="Markdown", reply_markup=get_force_join_markup())
@@ -662,14 +689,12 @@ def handle_all_messages(message):
                 bot.send_message(message.chat.id, f"❌ **ভুল উত্তর!** আবার চেষ্টা করুন:\n👉 **{question}**")
                 return
 
-        # Force Join Real-time Enforcement Guard
         if uid != ADMIN_ID and not check_force_join(uid):
             bot.send_message(message.chat.id, f"{get_emoji('warning')} **কাজ শুরু করার আগে অবশ্যই আপনাকে আমাদের অফিসিয়াল চ্যানেলগুলোতে জয়েন করতে হবে!**", reply_markup=get_force_join_markup())
             return
 
         if u["is_banned"]: return
 
-        # --- ADMIN STATES ---
         if state and check_permission(uid, "admin"):
             if state == "set_rate_ins":
                 set_config("rate_ins", txt)
@@ -1046,7 +1071,6 @@ def handle_all_messages(message):
                 bot.send_message(message.chat.id, f"✅ Video Tutorial for `{cat}` saved successfully!", reply_markup=get_admin_menu())
                 return
 
-        # --- USER TASK PROOF SUBMISSION ---
         if message.photo and state and state.startswith("sub_app_proof_"):
             task_id = state.replace("sub_app_proof_", "")
             sub_id = f"sub_{uid}_{int(time.time())}"
@@ -1065,7 +1089,6 @@ def handle_all_messages(message):
             bot.send_message(message.chat.id, "✅ **আপনার প্রুফ স্ক্রিনশট জমা হয়েছে!** এডমিন চেক করে এপ্রুভ করলে ব্যালেন্স যোগ হবে।", reply_markup=get_main_menu(uid))
             return
 
-        # --- USER SUPPORT TICKET STATE ---
         if state == "user_submit_ticket":
             if get_daily_support_count(uid) >= 5:
                 bot.send_message(message.chat.id, f"{get_emoji('error')} **আপনি আজ ৫টির বেশি সাপোর্ট টিকিট দিতে পারবেন না!**")
@@ -1084,7 +1107,6 @@ def handle_all_messages(message):
             bot.send_message(message.chat.id, f"✅ **আপনার সাপোর্ট টিকিট জমা নেওয়া হয়েছে!**\nTicket ID: `{t_id}`", reply_markup=get_main_menu(uid))
             return
 
-        # --- USER WORK STATES & FB VALIDATION GUARD ---
         if state == "enter_fb_uid":
             if not (txt.isdigit() and 14 <= len(txt) <= 16):
                 bot.send_message(message.chat.id, f"{get_emoji('error')} **ভুল UID!** Facebook UID অবশ্যই ১৪ থেকে ১৬ সংখ্যার হতে হবে। আবার দিন:")
@@ -1181,7 +1203,6 @@ def handle_all_messages(message):
             amt = u["balance"]
             if amt > max_limit: amt = max_limit
             
-            # Check Global Daily Bot Withdraw Limit
             today_str = datetime.now().strftime("%Y-%m-%d")
             last_reset = get_config("last_withdraw_reset_date", "")
             if last_reset != today_str:
@@ -1220,7 +1241,6 @@ def handle_all_messages(message):
             except: pass
             return
 
-        # --- MENU ROUTING & TASK PAUSE CHECKS ---
         if txt == TXT_WORK_MAIN:
             bot.send_message(message.chat.id, "💼 **কাজ অপশন নির্বাচন করুন:**", reply_markup=get_work_menu())
         elif txt == TXT_BACK:
@@ -1243,7 +1263,6 @@ def handle_all_messages(message):
                    f"🔑 Password: `{pass_val}`\n\n"
                    f"অ্যাকাউন্ট খুলে 2FA সেটআপ করে নিচের বাটনে চাপ দিন।")
             
-            # Using Keyboard Reply Buttons as requested
             markup = ReplyKeyboardMarkup(resize_keyboard=True, row_width=2)
             markup.add(rbtn("🔑 2FA সেট", "primary"), rbtn("Cancel ❌", "danger"))
             bot.send_message(message.chat.id, msg, parse_mode="Markdown", reply_markup=markup)
@@ -1336,7 +1355,6 @@ def handle_all_messages(message):
             g_email = temp.get("email")
             bot.send_message(message.chat.id, "⏳ **দয়া করে অপেক্ষা করুন, গুগল মেইল সার্ভারে অ্যাকাউন্টের স্থায়িত্ব সাইলেন্টলি ভেরিফাই করা হচ্ছে....**")
             
-            # Instant SMTP Ping Verification
             if not verify_gmail_smtp(g_email):
                 bot.send_message(message.chat.id, f"{get_emoji('error')} **আপনি জিমেইল অ্যাকাউন্টটি তৈরি না করেই 'কাজ শেষ' বাটনে চাপ দিয়েছেন!**\n\nদয়া করে সঠিক নিয়মে অ্যাকাউন্ট তৈরি করে আবার চেষ্টা করুন।", reply_markup=get_main_menu(uid))
                 return
@@ -1417,7 +1435,6 @@ def handle_all_messages(message):
         elif txt == TXT_ADMIN_PANEL and check_permission(uid, "admin"):
             bot.send_message(message.chat.id, "⚙️ **Admin Control Panel**", reply_markup=get_admin_menu())
 
-        # --- ADMIN BUTTON HANDLERS ---
         elif txt == "💰 Set Task Rates" and check_permission(uid, "admin"):
             markup = InlineKeyboardMarkup(row_width=1)
             markup.add(
@@ -1673,7 +1690,6 @@ def handle_all_messages(message):
             )
             bot.send_message(message.chat.id, "📥 **কোন Unsold ফাইল ডাউনলোড করতে চান?**", reply_markup=markup)
 
-        # Multi-post intermediate state string collection
         elif state == "set_multipost_url":
             temp = json.loads(u["temp_data"] or "{}")
             temp["btn_url"] = txt
@@ -1700,7 +1716,6 @@ def handle_callbacks(call):
         uid = call.from_user.id
         u = get_user_db(uid)
 
-        # Force Join Guard on Inline Clicks
         if uid != ADMIN_ID and call.data != "check_join_event" and not check_force_join(uid):
             bot.answer_callback_query(call.id, "❌ আপনি এখনও চ্যানেলগুলিতে জয়েন করেননি!", show_alert=True)
             return
@@ -1733,7 +1748,6 @@ def handle_callbacks(call):
 
             ad_url = get_config("spin_ad_url", "https://example.com")
             
-            # High Security Verification: User MUST Click Ad Link first to claim reward token
             markup = InlineKeyboardMarkup(row_width=1)
             markup.add(
                 ibtn("🌐 অ্যাড দেখুন (Ad Click Required)", url=ad_url, style="primary"),
@@ -1805,7 +1819,6 @@ def handle_callbacks(call):
             update_user_field(uid, "state", f"withdraw_number_{meth}")
             bot.send_message(call.message.chat.id, f"💳 **আপনার {meth} একাউন্ট নাম্বার প্রদান করুন:**")
 
-        # --- ADMIN CALLBACKS ---
         elif call.data == "set_rate_ins":
             update_user_field(uid, "state", "set_rate_ins")
             bot.send_message(call.message.chat.id, "📸 **Instagram এর নতুন রেট লিখুন (যেমন: 15.0):**")
@@ -1972,7 +1985,6 @@ def handle_callbacks(call):
                 c.execute("UPDATE pending_submissions SET status='approved' WHERE id=?", (sub_id,))
                 c.execute("UPDATE users SET balance = balance + ?, total_income = total_income + ?, approved_tasks = approved_tasks + 1, pending_tasks = MAX(0, pending_tasks - 1) WHERE user_id=?", (rate, rate, uid_t))
                 
-                # Lifetime 10% Ref Commission Logic
                 c.execute("SELECT referred_by FROM users WHERE user_id=?", (uid_t,))
                 u_ref = c.fetchone()
                 if u_ref and u_ref[0]:
@@ -2025,74 +2037,75 @@ def handle_callbacks(call):
         elif call.data.startswith("reply_t_"):
             t_id = call.data.replace("reply_t_", "")
             update_user_field(uid, "state", f"reply_ticket_{t_id}")
-            bot.send_message(call.message.chat.id, "💬 **রিপ্লাই টেক্সট সেন্ড করুন:**")
-
-        elif call.data.startswith("set_vid_"):
-            cat = call.data.replace("set_vid_", "")
-            update_user_field(uid, "state", f"set_vid_{cat}")
-            bot.send_message(call.message.chat.id, f"📹 **{cat.upper()} এর জন্য ভিডিওটি ফরওয়ার্ড বা আপলোড করুন:**")
+            bot.send_message(call.message.chat.id, f"💬 **Ticket `{t_id}` এর জন্য আপনার উত্তরটি লিখুন:**", parse_mode="Markdown")
 
         elif call.data.startswith("pay_with_"):
             req_id = call.data.replace("pay_with_", "")
             conn = get_db()
             c = conn.cursor()
-            c.execute("UPDATE withdraw_requests SET status='approved' WHERE req_id=?", (req_id,))
-            c.execute("SELECT user_id, amount FROM withdraw_requests WHERE req_id=?", (req_id,))
-            w_data = c.fetchone()
-            conn.commit()
-            conn.close()
-
-            if w_data:
-                log_admin_action(uid, f"Approved Withdrawal {req_id} of ৳{w_data[1]}")
-                try: bot.send_message(w_data[0], f"🎉 **আপনার ৳{w_data[1]} এর উইথড্র সফলভাবে পেমেন্ট করা হয়েছে!**")
+            c.execute("SELECT * FROM withdraw_requests WHERE req_id=? AND status='pending'", (req_id,))
+            w = c.fetchone()
+            if w:
+                w = dict(w)
+                c.execute("UPDATE withdraw_requests SET status='approved' WHERE req_id=?", (req_id,))
+                conn.commit()
+                log_admin_action(uid, f"Approved Withdrawal Request {req_id}")
+                bot.answer_callback_query(call.id, "✅ Withdrawal Approved!")
+                try: bot.send_message(w['user_id'], f"🎉 **আপনার উইথড্র রিকোয়েস্ট এপ্রুভ ও পেমেন্ট সম্পন্ন করা হয়েছে!**\nReq ID: `{req_id}`\nAmount: ৳{w['amount']}")
                 except: pass
-            bot.answer_callback_query(call.id, "✅ Payment Marked as Approved!")
+            else:
+                bot.answer_callback_query(call.id, "❌ Request Already Processed!", show_alert=True)
+            conn.close()
 
         elif call.data.startswith("ref_with_"):
             req_id = call.data.replace("ref_with_", "")
             conn = get_db()
             c = conn.cursor()
-            c.execute("SELECT user_id, amount FROM withdraw_requests WHERE req_id=? AND status='pending'", (req_id,))
-            w_data = c.fetchone()
-            if w_data:
+            c.execute("SELECT * FROM withdraw_requests WHERE req_id=? AND status='pending'", (req_id,))
+            w = c.fetchone()
+            if w:
+                w = dict(w)
+                uid_t = w['user_id']
+                amt = w['amount']
                 c.execute("UPDATE withdraw_requests SET status='rejected' WHERE req_id=?", (req_id,))
-                c.execute("UPDATE users SET balance = balance + ? WHERE user_id=?", (w_data[1], w_data[0]))
+                c.execute("UPDATE users SET balance = balance + ?, total_withdraw = MAX(0, total_withdraw - ?) WHERE user_id=?", (amt, amt, uid_t))
                 conn.commit()
-                log_admin_action(uid, f"Refunded Withdrawal {req_id} of ৳{w_data[1]}")
-                try: bot.send_message(w_data[0], f"❌ **আপনার ৳{w_data[1]} এর উইথড্র রিকোয়েস্ট রিজেক্ট করা হয়েছে এবং ব্যালেন্স রিফান্ড করা হয়েছে।**")
+                log_admin_action(uid, f"Refunded Withdrawal Request {req_id}")
+                bot.answer_callback_query(call.id, "❌ Withdrawal Refunded!")
+                try: bot.send_message(uid_t, f"⚠️ **আপনার ৳{amt} উইথড্র রিজেক্ট করা হয়েছে এবং ব্যালেন্স ফেরত দেওয়া হয়েছে!**\nReq ID: `{req_id}`")
                 except: pass
+            else:
+                bot.answer_callback_query(call.id, "❌ Request Already Processed!", show_alert=True)
             conn.close()
-            bot.answer_callback_query(call.id, "❌ Balance Refunded!")
+
+        elif call.data.startswith("set_vid_"):
+            cat = call.data.replace("set_vid_", "")
+            update_user_field(uid, "state", f"set_vid_{cat}")
+            bot.send_message(call.message.chat.id, f"📹 **{cat.upper()} এর জন্য নতুন Tutorial Video (ফাইল/আইডি/লিংক) সেন্ড করুন:**")
 
         elif call.data.startswith("export_"):
-            serv = call.data.replace("export_", "")
-            conn = get_db()
-            c = conn.cursor()
-            c.execute("SELECT * FROM pending_submissions WHERE sub_type=? AND status='pending'", (serv,))
-            rows = c.fetchall()
-            conn.close()
+            stype = call.data.replace("export_", "")
+            csv_data = export_unsold_csv(stype)
+            
+            if csv_data:
+                bio = io.BytesIO(csv_data.encode('utf-8'))
+                bio.name = f"unsold_{stype}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
+                bot.send_document(call.message.chat.id, bio, caption=f"📥 **Unsold {stype.upper()} Accounts Export File**")
+            else:
+                bot.answer_callback_query(call.id, "❌ কোনো Unsold ডাটা পাওয়া যায়নি!", show_alert=True)
 
-            if not rows:
-                bot.answer_callback_query(call.id, "❌ কোনো Unsold ডাটা নেই!", show_alert=True)
-                return
-
-            date_str = datetime.now().strftime("%Y-%m-%d")
-            filename = f"{serv}_unsold_{date_str}.csv"
-            with open(filename, "w", encoding="utf-8") as f:
-                f.write("Submit_ID,User_ID,Data,Rate,Date\n")
-                for r in rows:
-                    f.write(f"{r['id']},{r['user_id']},\"{r['payload']}\",{r['rate']},{datetime.fromtimestamp(r['created_at']).strftime('%Y-%m-%d %H:%M')}\n")
-
-            with open(filename, "rb") as f:
-                bot.send_document(call.message.chat.id, f)
-            os.remove(filename)
     except Exception as e:
         log_error(f"Error in handle_callbacks: {e}\n{traceback.format_exc()}")
 
 # ============================================
-# --- ENGINE START ---
+# --- BOT EXECUTION LOOP ---
 # ============================================
-if __name__ == "__main__":
+if __name__ == '__main__':
     keep_alive()
-    print(f"🚀 {BOT_NAME} Production Engine running safely on SQLite3...")
-    bot.infinity_polling(skip_pending=True)
+    print("🤖 EASY EARN BD Engine Starting Polling...")
+    while True:
+        try:
+            bot.polling(none_stop=True, interval=0, timeout=60)
+        except Exception as e:
+            log_error(f"Polling Crashed: {e}\n{traceback.format_exc()}")
+            time.sleep(3)
