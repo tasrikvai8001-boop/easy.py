@@ -51,7 +51,7 @@ def keep_alive():
 # ============================================
 # --- CONFIGURATION & ENVIRONMENT SECURITY ---
 # ============================================
-TOKEN = os.environ.get("BOT_TOKEN", "8593556780:AAFPvacoLaCxJoF8xiyM27AIBVX1c-XwEHA")
+TOKEN = os.environ.get("BOT_TOKEN", "8593556780:AAF9GtHJw0oKFEpRyKOb_9kZFFJtJ7XnAL8")
 ADMIN_ID = int(os.environ.get("ADMIN_ID", 7833766898))
 BOT_NAME = "EASY EARN BD"
 LOG_FILE = "error_logs.txt"
