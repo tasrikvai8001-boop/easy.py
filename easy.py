@@ -37,7 +37,7 @@ app = Flask('')
 
 @app.route('/')
 def home():
-    return "EASY EARN BD Full Feature Engine Running 24/7!"
+    return "EASY EARN BD Firebase Engine is Running 24/7!"
 
 def run_web_server():
     port = int(os.environ.get("PORT", 8080))
@@ -51,7 +51,7 @@ def keep_alive():
 # ============================================
 # --- CONFIGURATION & ENVIRONMENT SECURITY ---
 # ============================================
-TOKEN = os.environ.get("BOT_TOKEN", "8593556780:AAF9GtHJw0oKFEpRyKOb_9kZFFJtJ7XnAL8")
+TOKEN = os.environ.get("BOT_TOKEN", "8593556780:AAFPvacoLaCxJoF8xiyM27AIBVX1c-XwEHA")
 ADMIN_ID = int(os.environ.get("ADMIN_ID", 7833766898))
 BOT_NAME = "EASY EARN BD"
 LOG_FILE = "error_logs.txt"
@@ -138,7 +138,11 @@ def init_db():
         "sheet_id_gmail": "",
         "json_credentials": "",
         "firebase_api": "AIzaSyBGABXnrP66oCndR0a6Hza3m2pehk2JgcE",
-        "tutorial_videos": json.dumps({"gmail": "", "fb": "", "ins": ""}),
+        "tutorial_videos": json.dumps({
+            "gmail": "https://youtube.com", 
+            "fb": "https://youtube.com", 
+            "ins": "https://youtube.com"
+        }),
         "withdraw_methods": json.dumps({
             "bKash": {"enabled": True, "min": 50.0, "max": 5000.0},
             "Nagad": {"enabled": True, "min": 50.0, "max": 5000.0},
@@ -209,13 +213,13 @@ def get_emoji(key):
     emojis = json.loads(get_config("emojis", "{}"))
     return emojis.get(key, "✨")
 
-def check_permission(user_id, perm):
+def check_permission(user_id, perm="admin"):
     if user_id == ADMIN_ID: return True
     u = get_user_db(user_id)
     if u.get("role") == "admin": return True
     if u.get("role") == "sub_admin":
         perms = json.loads(u.get("permissions") or "{}")
-        return perms.get(perm, False)
+        return perms.get(perm, False) or perms.get("all", False)
     return False
 
 # ============================================
@@ -589,6 +593,7 @@ def generate_custom_excel(service, rows, filename):
     ws.title = f"{service.upper()} Unsold Data"
     ws.views.sheetView[0].showGridLines = True
 
+    # Professional Styling Palette
     header_fill = PatternFill(start_color="1F4E78", end_color="1F4E78", fill_type="solid")
     header_font = Font(name="Calibri", size=11, bold=True, color="FFFFFF")
     zebra_fill = PatternFill(start_color="F2F2F2", end_color="F2F2F2", fill_type="solid")
@@ -629,6 +634,7 @@ def generate_custom_excel(service, rows, filename):
             cell.alignment = center_align
             cell.font = Font(name="Calibri", size=10)
 
+    # Auto-fit columns calculation
     for col in ws.columns:
         max_len = 0
         col_letter = get_column_letter(col[0].column)
@@ -665,7 +671,7 @@ def handle_all_messages(message):
                     fname = message.from_user.first_name
                     ref_msg = (f"🎉 <b>নতুন রেফারেল নোটিফিকেশন!</b>\n\n"
                                f"আপনার রেফার লিংক ব্যবহার করে <b>{fname}</b> বটে জয়েন করেছে।\n\n"
-                               f"👉 <b>দয়া করে তাকে একটি জিমেইল এর কাজ করতে বলেন তাহলে ১০ টাকা বোনাস পাবেন এবং সে যত কাজ করবে আপনি ১০% বোনাস পাবেন সারাজীবন।</b>")
+                               f"👉 <b>দয়া করে তাকে একটি কাজ করতে বলেন তাহলে আপনি বোনাস ও ১০% কমিশন পাবেন।</b>")
                     try: bot.send_message(ref_id, ref_msg, parse_mode="HTML")
                     except: pass
                 
@@ -884,69 +890,88 @@ def handle_all_messages(message):
                 except: bot.send_message(message.chat.id, "❌ <b>ইনভ্যালিড অ্যামাউন্ট!</b>", parse_mode="HTML", reply_markup=get_admin_menu())
                 update_user_field(uid, "state", None)
                 return
-            elif state == "add_subadmin_id":
-                temp = json.loads(u.get("temp_data") or "{}")
-                temp["target_sub"] = txt
-                update_user_field(uid, "temp_data", json.dumps(temp))
-                update_user_field(uid, "state", "add_subadmin_perms")
-                bot.send_message(message.chat.id, "👑 <b>Sub-Admin Permissions JSON দিন (যেমন: {\"admin\": true}):</b>", parse_mode="HTML")
-                return
-            elif state == "add_subadmin_perms":
-                temp = json.loads(u.get("temp_data") or "{}")
-                target = temp.get("target_sub")
-                fb_update(f"users/{target}", {"role": "sub_admin", "permissions": txt})
-                update_user_field(uid, "state", None)
-                bot.send_message(message.chat.id, f"✅ <b>User <code>{target}</code> কে Sub-Admin করা হয়েছে!</b>", parse_mode="HTML", reply_markup=get_admin_menu())
-                return
-            elif state == "set_tut_gmail":
-                vids = json.loads(get_config("tutorial_videos", "{}"))
-                vids["gmail"] = txt
-                set_config("tutorial_videos", json.dumps(vids))
-                update_user_field(uid, "state", None)
-                bot.send_message(message.chat.id, "✅ <b>Gmail Tutorial Link Saved!</b>", parse_mode="HTML", reply_markup=get_admin_menu())
-                return
-            elif state == "set_tut_fb":
-                vids = json.loads(get_config("tutorial_videos", "{}"))
-                vids["fb"] = txt
-                set_config("tutorial_videos", json.dumps(vids))
-                update_user_field(uid, "state", None)
-                bot.send_message(message.chat.id, "✅ <b>Facebook Tutorial Link Saved!</b>", parse_mode="HTML", reply_markup=get_admin_menu())
-                return
-            elif state == "set_tut_ins":
-                vids = json.loads(get_config("tutorial_videos", "{}"))
-                vids["ins"] = txt
-                set_config("tutorial_videos", json.dumps(vids))
-                update_user_field(uid, "state", None)
-                bot.send_message(message.chat.id, "✅ <b>Instagram Tutorial Link Saved!</b>", parse_mode="HTML", reply_markup=get_admin_menu())
-                return
-            elif state == "user_deep_search_id":
-                s_u = get_user_db(txt)
-                info = (f"🔍 <b>USER DEEP DATA SEARCH</b>\n\n"
-                        f"<b>ID:</b> <code>{s_u.get('user_id')}</code>\n"
-                        f"<b>Balance:</b> ৳{float(s_u.get('balance', 0)):.2f}\n"
-                        f"<b>Referred By:</b> <code>{s_u.get('referred_by')}</code>\n"
-                        f"<b>Total Income:</b> ৳{float(s_u.get('total_income', 0)):.2f}\n"
-                        f"<b>Is Banned:</b> {s_u.get('is_banned')}\n"
-                        f"<b>Role:</b> {s_u.get('role')}")
-                bot.send_message(message.chat.id, info, parse_mode="HTML", reply_markup=get_admin_menu())
+            elif state == "admin_sub_admin_id":
+                if txt.isdigit():
+                    fb_update(f"users/{txt}", {"role": "sub_admin", "permissions": json.dumps({"all": True})})
+                    bot.send_message(message.chat.id, f"👑 <b>User <code>{txt}</code> is now a Sub-Admin!</b>", parse_mode="HTML", reply_markup=get_admin_menu())
+                else:
+                    bot.send_message(message.chat.id, "❌ <b>ইনভ্যালিড আইডি!</b>", parse_mode="HTML")
                 update_user_field(uid, "state", None)
                 return
-            elif state == "broadcast_msg_input":
-                users = fb_get("users") or {}
+            elif state == "admin_user_search":
+                if txt.isdigit():
+                    s_u = get_user_db(int(txt))
+                    msg = (f"🔍 <b>USER DEEP SEARCH PROFILE</b>\n\n"
+                           f"🆔 User ID: <code>{s_u.get('user_id')}</code>\n"
+                           f"💰 Balance: ৳{float(s_u.get('balance', 0)):.2f}\n"
+                           f"👥 Referrals: {s_u.get('referrals', 0)}\n"
+                           f"📥 Total Withdrawn: ৳{float(s_u.get('total_withdraw', 0)):.2f}\n"
+                           f"✅ Approved Tasks: {s_u.get('approved_tasks', 0)}\n"
+                           f"❌ Rejected Tasks: {s_u.get('rejected_tasks', 0)}\n"
+                           f"⛔ Is Banned: {'YES' if s_u.get('is_banned') else 'NO'}\n"
+                           f"👑 Role: {s_u.get('role', 'user')}")
+                    bot.send_message(message.chat.id, msg, parse_mode="HTML", reply_markup=get_admin_menu())
+                else: bot.send_message(message.chat.id, "❌ <b>ইনভ্যালিড ইউজার আইডি!</b>", parse_mode="HTML")
+                update_user_field(uid, "state", None)
+                return
+            elif state == "admin_broadcast_msg":
+                all_users = fb_get("users") or {}
                 count = 0
-                for target_id in users.keys():
+                bot.send_message(message.chat.id, f"🚀 <b>{len(all_users)} জন ইউজারের কাছে মেসেজ ব্রডকাস্ট শুরু হচ্ছে...</b>", parse_mode="HTML")
+                for u_id in all_users.keys():
                     try:
-                        bot.send_message(target_id, message.text, parse_mode="HTML")
+                        bot.send_message(u_id, txt, parse_mode="HTML")
                         count += 1
                         time.sleep(0.04)
                     except: pass
-                bot.send_message(message.chat.id, f"✅ <b>স্মার্ট ব্রডকাস্ট সম্পূর্ণ! মোট {count} জন ইউজারকে পাঠানো হয়েছে।</b>", parse_mode="HTML", reply_markup=get_admin_menu())
+                bot.send_message(message.chat.id, f"✅ <b>ব্রডকাস্ট সম্পন্ন! মোট {count} জন ইউজার মেসেজ পেয়েছেন।</b>", parse_mode="HTML", reply_markup=get_admin_menu())
                 update_user_field(uid, "state", None)
                 return
-            elif state == "add_app_task_data":
-                task_id = f"task_{random.randint(100, 999)}"
-                fb_set(f"extra_app_tasks/{task_id}", {"title": txt, "reward": 5.0, "status": "active"})
-                bot.send_message(message.chat.id, "✅ <b>নতুন অ্যাপস/টেলিগ্রাম টাস্ক যুক্ত হয়েছে!</b>", parse_mode="HTML", reply_markup=get_admin_menu())
+            elif state == "admin_add_app_task":
+                try:
+                    lines = txt.split("\n")
+                    t_title = lines[0]
+                    t_link = lines[1]
+                    t_reward = float(lines[2])
+                    task_id = f"task_{random.randint(1000, 9999)}"
+                    fb_set(f"app_tasks/{task_id}", {
+                        "id": task_id, "title": t_title, "link": t_link, "reward": t_reward
+                    })
+                    bot.send_message(message.chat.id, f"✅ <b>নতুন অ্যাপ/টেলিগ্রাম টাস্ক যুক্ত হয়েছে!</b>\nTitle: {t_title}\nReward: ৳{t_reward}", parse_mode="HTML", reply_markup=get_admin_menu())
+                except:
+                    bot.send_message(message.chat.id, "❌ <b>ভুল ফরম্যাট! ৩ লাইনে শিরোনাম, লিংক এবং রিওয়ার্ড রিড্রেস দিন।</b>", parse_mode="HTML")
+                update_user_field(uid, "state", None)
+                return
+            elif state == "admin_set_vid_gmail":
+                vids = json.loads(get_config("tutorial_videos", "{}"))
+                vids["gmail"] = txt
+                set_config("tutorial_videos", json.dumps(vids))
+                bot.send_message(message.chat.id, f"✅ <b>Gmail Tutorial Video Link Saved!</b>", parse_mode="HTML", reply_markup=get_admin_menu())
+                update_user_field(uid, "state", None)
+                return
+            elif state == "admin_set_vid_fb":
+                vids = json.loads(get_config("tutorial_videos", "{}"))
+                vids["fb"] = txt
+                set_config("tutorial_videos", json.dumps(vids))
+                bot.send_message(message.chat.id, f"✅ <b>Facebook Tutorial Video Link Saved!</b>", parse_mode="HTML", reply_markup=get_admin_menu())
+                update_user_field(uid, "state", None)
+                return
+            elif state == "admin_set_vid_ins":
+                vids = json.loads(get_config("tutorial_videos", "{}"))
+                vids["ins"] = txt
+                set_config("tutorial_videos", json.dumps(vids))
+                bot.send_message(message.chat.id, f"✅ <b>Instagram Tutorial Video Link Saved!</b>", parse_mode="HTML", reply_markup=get_admin_menu())
+                update_user_field(uid, "state", None)
+                return
+            elif state and state.startswith("admin_reply_ticket_"):
+                t_id = state.replace("admin_reply_ticket_", "")
+                t_data = fb_get(f"support_tickets/{t_id}")
+                if t_data:
+                    u_target = t_data.get("user_id")
+                    fb_update(f"support_tickets/{t_id}", {"status": "replied", "reply": txt})
+                    try: bot.send_message(u_target, f"🎧 <b>এডমিন এর থেকে সাপোর্ট টিকিট উত্তর ({t_id}):</b>\n\n{txt}", parse_mode="HTML")
+                    except: pass
+                    bot.send_message(message.chat.id, f"✅ <b>টিকিট {t_id} রিপ্লাই দেওয়া হয়েছে!</b>", parse_mode="HTML", reply_markup=get_admin_menu())
                 update_user_field(uid, "state", None)
                 return
 
@@ -1161,7 +1186,6 @@ def handle_all_messages(message):
                    f"🔑 Password: <code>{pass_val}</code>\n\n"
                    f"অ্যাকাউন্ট খুলে 2FA সেটআপ করে নিচের বাটনে চাপ দিন।")
             
-            # Vertical Sub-Buttons Layout
             markup = ReplyKeyboardMarkup(resize_keyboard=True, row_width=1)
             markup.add(rbtn("🔑 2FA সেট", "primary"), rbtn("Cancel ❌", "danger"))
             bot.send_message(message.chat.id, msg, parse_mode="HTML", reply_markup=markup)
@@ -1218,7 +1242,6 @@ def handle_all_messages(message):
                    f"👤 Last Name: <code>{ln}</code>\n"
                    f"🔑 Password: <code>{pass_val}</code>")
             
-            # Vertical Sub-Buttons Layout
             markup = ReplyKeyboardMarkup(resize_keyboard=True, row_width=1)
             markup.add(rbtn("Send UID", "primary"), rbtn("Cancel ❌", "danger"))
             bot.send_message(message.chat.id, msg, parse_mode="HTML", reply_markup=markup)
@@ -1245,7 +1268,6 @@ def handle_all_messages(message):
                    f"✉️ Gmail: <code>{g_email}</code>\n"
                    f"🔑 Password: <code>{pass_val}</code>")
             
-            # Vertical Sub-Buttons Layout
             markup = ReplyKeyboardMarkup(resize_keyboard=True, row_width=1)
             markup.add(rbtn("কাজ শেষ", "success"), rbtn("বাতিল", "danger"))
             bot.send_message(message.chat.id, msg, parse_mode="HTML", reply_markup=markup)
@@ -1259,7 +1281,6 @@ def handle_all_messages(message):
             temp = json.loads(u.get("temp_data") or "{}")
             start_time = float(temp.get("start_time", 0))
 
-            # 2-3 Minutes Timer Guard Verification
             if time.time() - start_time < 120:
                 bot.send_message(message.chat.id, f"{get_emoji('error')} <b>সতর্কবার্তা:</b> আপনি কাজ শুরুর মাত্র ২ মিনিটের মধ্যে 'কাজ শেষ' চাপ দিয়েছেন! সঠিক নিয়মে অ্যাকাউন্ট তৈরি করতে ন্যূনতম ৩ মিনিট সময় অতিবাহিত করুন।", parse_mode="HTML")
                 return
@@ -1324,7 +1345,7 @@ def handle_all_messages(message):
             link = f"https://t.me/{bot_uname}?start={uid}"
             bonus = get_config("ref_bonus", "10.0")
             msg = (f"{get_emoji('invite')} <b>REFER & EARN!</b>\n\n"
-                   f"আপনার রেফার লিংক:\n<code>{link}</code>\n\n"
+                   f"আপনার রেফারেল লিংক:\n<code>{link}</code>\n\n"
                    f"💡 নিয়ম: আপনার লিংক থেকে কোনো ইউজার জয়েন করে ১ম কাজ শেষ করলে পাবেন <b>৳{bonus}</b> এবং তার সারাজীবনের কাজের ওপর পাবেন <b>১০% লাইফটাইম কমিশন!</b>")
             bot.send_message(message.chat.id, msg, parse_mode="HTML")
 
@@ -1349,7 +1370,7 @@ def handle_all_messages(message):
         elif txt == TXT_ADMIN_PANEL and check_permission(uid, "admin"):
             bot.send_message(message.chat.id, "⚙️ <b>Admin Control Panel</b>", parse_mode="HTML", reply_markup=get_admin_menu())
 
-        # --- ADMIN BUTTON HANDLERS ---
+        # --- ALL ADMIN PANEL BUTTON HANDLERS ---
         elif txt == "📢 Set Force Join" and check_permission(uid, "admin"):
             chs = json.loads(get_config("force_channels", "[]"))
             markup = InlineKeyboardMarkup(row_width=1)
@@ -1357,6 +1378,63 @@ def handle_all_messages(message):
             for ch in chs:
                 markup.add(ibtn(f"❌ Remove {ch}", callback_data=f"rem_force_{ch}", style="danger"))
             bot.send_message(message.chat.id, "📢 <b>Force Join Channel Manager:</b>", parse_mode="HTML", reply_markup=markup)
+
+        elif txt == "🎁 Set Ref Bonus" and check_permission(uid, "admin"):
+            update_user_field(uid, "state", "set_ref_bonus")
+            bot.send_message(message.chat.id, f"🎁 <b>বর্তমান রেফারাল বোনাস: ৳{get_config('ref_bonus')}</b>\nনতুন রেফারাল বোনাস অ্যামাউন্ট দিন (যেমন: 10):", parse_mode="HTML")
+
+        elif txt == "💳 Withdraw Setting" and check_permission(uid, "admin"):
+            w_methods = json.loads(get_config("withdraw_methods", "{}"))
+            markup = InlineKeyboardMarkup(row_width=1)
+            for m, data in w_methods.items():
+                status = "✅ Enabled" if data.get("enabled") else "❌ Disabled"
+                markup.add(ibtn(f"{m}: {status}", callback_data=f"toggle_wmeth_{m}", style="primary"))
+            bot.send_message(message.chat.id, "💳 <b>Withdraw Method Manager (Toggle On/Off):</b>", parse_mode="HTML", reply_markup=markup)
+
+        elif txt == "🔑 Set Passwords Base" and check_permission(uid, "admin"):
+            markup = InlineKeyboardMarkup(row_width=1)
+            markup.add(
+                ibtn(f"📸 Instagram Base ({get_config('ins_pass')})", callback_data="set_pass_ins", style="primary"),
+                ibtn(f"📘 Facebook Base ({get_config('fb_pass')})", callback_data="set_pass_fb", style="primary"),
+                ibtn(f"📧 Gmail Base ({get_config('gmail_pass')})", callback_data="set_pass_gmail", style="primary")
+            )
+            bot.send_message(message.chat.id, "🔑 <b>অটোমেটিক ডায়নামিক পাসওয়ার্ড বেস সেটিং:</b>", parse_mode="HTML", reply_markup=markup)
+
+        elif txt == "🎨 Edit Emoji IDs" and check_permission(uid, "admin"):
+            emojis = json.loads(get_config("emojis", "{}"))
+            msg = "🎨 <b>বর্তমান বটে ব্যবহৃত ইমোজি তালিকা:</b>\n\n" + "\n".join([f"{k}: {v}" for k, v in emojis.items()])
+            bot.send_message(message.chat.id, msg, parse_mode="HTML")
+
+        elif txt == "🌀 Spin & Ad Settings" and check_permission(uid, "admin"):
+            markup = InlineKeyboardMarkup(row_width=1)
+            markup.add(
+                ibtn(f"💰 Reward (Current: ৳{get_config('spin_reward')})", callback_data="set_spin_reward", style="primary"),
+                ibtn(f"🔢 Limit (Current: {get_config('spin_limit')})", callback_data="set_spin_limit", style="primary"),
+                ibtn(f"🌐 Ad Link (Current)", callback_data="set_spin_url", style="primary")
+            )
+            bot.send_message(message.chat.id, "🌀 <b>স্পিন ও অ্যাডস্টাররা অ্যাড সেটিংস:</b>", parse_mode="HTML", reply_markup=markup)
+
+        elif txt == "📊 Google Sheets Config" and check_permission(uid, "admin"):
+            markup = InlineKeyboardMarkup(row_width=1)
+            markup.add(
+                ibtn("📸 Instagram Sheet ID", callback_data="set_sheet_ins", style="primary"),
+                ibtn("📘 Facebook Sheet ID", callback_data="set_sheet_fb", style="primary"),
+                ibtn("📧 Gmail Sheet ID", callback_data="set_sheet_gmail", style="primary")
+            )
+            bot.send_message(message.chat.id, "📊 <b>Google Sheet Spreadsheet ID Manager:</b>", parse_mode="HTML", reply_markup=markup)
+
+        elif txt == "🤖 Upload JSON Creds" and check_permission(uid, "admin"):
+            update_user_field(uid, "state", "set_json_creds")
+            bot.send_message(message.chat.id, "🤖 <b>Google Cloud Service Account credential JSON ফাইল বা টেক্সট আপলোড করুন:</b>", parse_mode="HTML")
+
+        elif txt == "🔥 Set Firebase API" and check_permission(uid, "admin"):
+            update_user_field(uid, "state", "set_firebase_api")
+            bot.send_message(message.chat.id, f"🔥 <b>বর্তমান Firebase API Key:</b> <code>{get_config('firebase_api')}</code>\n\nনতুন Firebase API Key প্রদান করুন:", parse_mode="HTML")
+
+        elif txt == "🔄 Sync Google Sheet Approval" and check_permission(uid, "admin"):
+            bot.send_message(message.chat.id, "⏳ <b>গুগল শিট থেকে 'ok'/'bad' স্ট্যাটাস সিঙ্ক করা হচ্ছে...</b>", parse_mode="HTML")
+            cnt = sync_sheet_approvals()
+            bot.send_message(message.chat.id, f"✅ <b>সিঙ্ক সম্পন্ন হয়েছে! মোট {cnt} টি টাস্ক প্রসেস করা হয়েছে।</b>", parse_mode="HTML", reply_markup=get_admin_menu())
 
         elif txt == "📥 Export Unsold Files" and check_permission(uid, "admin"):
             markup = InlineKeyboardMarkup(row_width=1)
@@ -1367,6 +1445,70 @@ def handle_all_messages(message):
             )
             bot.send_message(message.chat.id, "📥 <b>কোন সার্ভিসের Unsold ফাইল এক্সপোর্ট করতে চান?</b>", parse_mode="HTML", reply_markup=markup)
 
+        elif txt == "🔎 Pending Approvals" and check_permission(uid, "admin"):
+            subs = fb_get("pending_submissions") or {}
+            pending_list = [s for s_id, s in subs.items() if s.get("status") == "pending"]
+            if not pending_list:
+                bot.send_message(message.chat.id, "✅ <b>কোনো পেন্ডিং টাস্ক সাবমিশন নেই!</b>", parse_mode="HTML")
+            else:
+                bot.send_message(message.chat.id, f"🔎 <b>মোট {len(pending_list)} টি পেন্ডিং কাজ আছে:</b>", parse_mode="HTML")
+                for item in pending_list[:5]:
+                    s_id = item.get("id")
+                    u_target = item.get("user_id")
+                    stype = item.get("sub_type")
+                    srate = item.get("rate")
+                    p_data = item.get("payload")
+                    
+                    markup = InlineKeyboardMarkup(row_width=2)
+                    markup.add(
+                        ibtn("✅ Approve", callback_data=f"adm_app_{s_id}", style="success"),
+                        ibtn("❌ Reject", callback_data=f"adm_rej_{s_id}", style="danger")
+                    )
+                    bot.send_message(message.chat.id, f"📌 Sub ID: <code>{s_id}</code>\nUser: <code>{u_target}</code>\nType: {stype}\nRate: ৳{srate}\nPayload: <code>{p_data}</code>", parse_mode="HTML", reply_markup=markup)
+
+        elif txt == "📥 Pending Withdraws" and check_permission(uid, "admin"):
+            reqs = fb_get("withdraw_requests") or {}
+            p_reqs = [r for r_id, r in reqs.items() if r.get("status") == "pending"]
+            if not p_reqs:
+                bot.send_message(message.chat.id, "✅ <b>কোনো পেন্ডিং উইথড্র রিকোয়েস্ট নেই!</b>", parse_mode="HTML")
+            else:
+                bot.send_message(message.chat.id, f"📥 <b>মোট {len(p_reqs)} টি উইথড্র পেন্ডিং আছে:</b>", parse_mode="HTML")
+                for r in p_reqs[:5]:
+                    r_id = r.get("req_id")
+                    u_target = r.get("user_id")
+                    m = r.get("method")
+                    a = r.get("account_number")
+                    amt = r.get("amount")
+
+                    markup = InlineKeyboardMarkup(row_width=2)
+                    markup.add(
+                        ibtn("✅ Paid", callback_data=f"pay_with_{r_id}", style="success"),
+                        ibtn("❌ Refund", callback_data=f"ref_with_{r_id}", style="danger")
+                    )
+                    bot.send_message(message.chat.id, f"💳 Req ID: <code>{r_id}</code>\nUser: <code>{u_target}</code>\nMethod: {m}\nAccount: <code>{a}</code>\nAmount: ৳{amt}", parse_mode="HTML", reply_markup=markup)
+
+        elif txt == "📩 Pending Support Tickets" and check_permission(uid, "admin"):
+            tickets = fb_get("support_tickets") or {}
+            p_tickets = [t for t_id, t in tickets.items() if t.get("status") == "pending"]
+            if not p_tickets:
+                bot.send_message(message.chat.id, "✅ <b>কোনো পেন্ডিং সাপোর্ট টিকিট নেই!</b>", parse_mode="HTML")
+            else:
+                for t in p_tickets[:5]:
+                    t_id = t.get("ticket_id")
+                    u_target = t.get("user_id")
+                    msg_text = t.get("message")
+                    markup = InlineKeyboardMarkup()
+                    markup.add(ibtn("💬 Reply Ticket", callback_data=f"reply_ticket_{t_id}", style="primary"))
+                    bot.send_message(message.chat.id, f"📩 Ticket ID: <code>{t_id}</code>\nUser: <code>{u_target}</code>\nMessage: {msg_text}", parse_mode="HTML", reply_markup=markup)
+
+        elif txt == "➕ Add App/TG Task" and check_permission(uid, "admin"):
+            update_user_field(uid, "state", "admin_add_app_task")
+            bot.send_message(message.chat.id, "➕ <b>নতুন অ্যাপ বা টেলিগ্রাম টাস্ক যোগ করতে ৩ লাইনে নিচের তথ্য দিন:</b>\n\n১ম লাইন: শিরোনাম/টাইটেল\n২য় লাইন: লিংক\n৩য় লাইন: রিওয়ার্ড অ্যামাউন্ট (যেমন: 5.0)", parse_mode="HTML")
+
+        elif txt == "📩 Smart Broadcast Message" and check_permission(uid, "admin"):
+            update_user_field(uid, "state", "admin_broadcast_msg")
+            bot.send_message(message.chat.id, "📩 <b>সকল বটের ইউজারের কাছে ব্রডকাস্ট করতে বার্তাটি লিখুন:</b>", parse_mode="HTML")
+
         elif txt == "💰 Set Task Rates" and check_permission(uid, "admin"):
             markup = InlineKeyboardMarkup(row_width=1)
             markup.add(
@@ -1375,124 +1517,6 @@ def handle_all_messages(message):
                 ibtn(f"📧 Set Gmail Rate (Current: ৳{get_config('rate_gmail')})", callback_data="set_rate_gmail", style="primary")
             )
             bot.send_message(message.chat.id, "💰 <b>কাজের রেট সেটিং:</b>", parse_mode="HTML", reply_markup=markup)
-
-        elif txt == "🎁 Set Ref Bonus" and check_permission(uid, "admin"):
-            update_user_field(uid, "state", "set_ref_bonus")
-            bot.send_message(message.chat.id, f"🎁 <b>নতুন রেফার বোনাস দিন (বর্তমান: ৳{get_config('ref_bonus')}):</b>", parse_mode="HTML")
-
-        elif txt == "🔑 Set Passwords Base" and check_permission(uid, "admin"):
-            markup = InlineKeyboardMarkup(row_width=1)
-            markup.add(
-                ibtn(f"📸 Ins Base Pass ({get_config('ins_pass')})", callback_data="set_pass_ins", style="primary"),
-                ibtn(f"📘 FB Base Pass ({get_config('fb_pass')})", callback_data="set_pass_fb", style="primary"),
-                ibtn(f"📧 Gmail Base Pass ({get_config('gmail_pass')})", callback_data="set_pass_gmail", style="primary")
-            )
-            bot.send_message(message.chat.id, "🔑 <b>পাসওয়ার্ড বেস নেম ম্যানেজমেন্ট:</b>", parse_mode="HTML", reply_markup=markup)
-
-        elif txt == "🌀 Spin & Ad Settings" and check_permission(uid, "admin"):
-            markup = InlineKeyboardMarkup(row_width=1)
-            markup.add(
-                ibtn(f"💰 Set Spin Reward (৳{get_config('spin_reward')})", callback_data="set_spin_reward", style="primary"),
-                ibtn(f"🌀 Set Spin Limit ({get_config('spin_limit')} Times)", callback_data="set_spin_limit", style="primary"),
-                ibtn("🌐 Set Adsterra Direct Link", callback_data="set_spin_url", style="primary")
-            )
-            bot.send_message(message.chat.id, "🌀 <b>স্পিন ও এডস সেটিং:</b>", parse_mode="HTML", reply_markup=markup)
-
-        elif txt == "📊 Google Sheets Config" and check_permission(uid, "admin"):
-            markup = InlineKeyboardMarkup(row_width=1)
-            markup.add(
-                ibtn("📸 Instagram Sheet ID", callback_data="set_sheet_ins", style="primary"),
-                ibtn("📘 Facebook Sheet ID", callback_data="set_sheet_fb", style="primary"),
-                ibtn("📧 Gmail Sheet ID", callback_data="set_sheet_gmail", style="primary")
-            )
-            bot.send_message(message.chat.id, "📊 <b>গুগল শিট কানেকশন ম্যানেজার:</b>", parse_mode="HTML", reply_markup=markup)
-
-        elif txt == "🤖 Upload JSON Creds" and check_permission(uid, "admin"):
-            update_user_field(uid, "state", "set_json_creds")
-            bot.send_message(message.chat.id, "📄 <b>Google Service Account `credentials.json` ফাইলটি পাঠান বা টেক্সট আকারে পেস্ট করুন:</b>", parse_mode="HTML")
-
-        elif txt == "🔥 Set Firebase API" and check_permission(uid, "admin"):
-            update_user_field(uid, "state", "set_firebase_api")
-            bot.send_message(message.chat.id, "🔥 <b>Firebase API Key দিন:</b>", parse_mode="HTML")
-
-        elif txt == "🔄 Sync Google Sheet Approval" and check_permission(uid, "admin"):
-            bot.send_message(message.chat.id, "⏳ <b>গুগল শিটের সাথে সিঙ্ক হচ্ছে...</b>", parse_mode="HTML")
-            cnt = sync_sheet_approvals()
-            bot.send_message(message.chat.id, f"✅ <b>সিঙ্ক সম্পন্ন! মোট {cnt} টি সাবমিশন আপডেট হয়েছে।</b>", parse_mode="HTML")
-
-        elif txt == "⛔ Ban/Unban User" and check_permission(uid, "admin"):
-            markup = InlineKeyboardMarkup(row_width=2)
-            markup.add(
-                ibtn("⛔ Ban User", callback_data="admin_ban_user", style="danger"),
-                ibtn("✅ Unban User", callback_data="admin_unban_user", style="success")
-            )
-            bot.send_message(message.chat.id, "⛔ <b>ইউজার ব্যান/আনব্যান ম্যানেজার:</b>", parse_mode="HTML", reply_markup=markup)
-
-        elif txt == "➕ Add/Deduct Balance" and check_permission(uid, "admin"):
-            markup = InlineKeyboardMarkup(row_width=2)
-            markup.add(
-                ibtn("➕ Add Balance", callback_data="admin_add_bal_id", style="success"),
-                ibtn("➖ Deduct Balance", callback_data="admin_ded_bal_id", style="danger")
-            )
-            bot.send_message(message.chat.id, "💰 <b>ইউজার ব্যালেন্স কন্ট্রোল:</b>", parse_mode="HTML", reply_markup=markup)
-
-        elif txt == "👑 Sub-Admin Manager" and check_permission(uid, "admin"):
-            update_user_field(uid, "state", "add_subadmin_id")
-            bot.send_message(message.chat.id, "👑 <b>যাকে Sub-Admin করতে চান তার Telegram ID দিন:</b>", parse_mode="HTML")
-
-        elif txt == "📧 Set Recovery Email" and check_permission(uid, "admin"):
-            update_user_field(uid, "state", "set_recovery_email")
-            bot.send_message(message.chat.id, f"📧 <b>নতুন ریکভারি ইমেইল দিন (বর্তমান: <code>{get_config('recovery_email')}</code>):</b>", parse_mode="HTML")
-
-        elif txt == "🎥 Set Tutorial Videos" and check_permission(uid, "admin"):
-            markup = InlineKeyboardMarkup(row_width=1)
-            markup.add(
-                ibtn("📧 Gmail Tutorial Video Link", callback_data="set_tut_gmail", style="primary"),
-                ibtn("📘 FB Tutorial Video Link", callback_data="set_tut_fb", style="primary"),
-                ibtn("📸 Ins Tutorial Video Link", callback_data="set_tut_ins", style="primary")
-            )
-            bot.send_message(message.chat.id, "🎥 <b>টিউটোরিয়াল ভিডিও লিঙ্ক সেটিং:</b>", parse_mode="HTML", reply_markup=markup)
-
-        elif txt == "🔍 User Deep Search" and check_permission(uid, "admin"):
-            update_user_field(uid, "state", "user_deep_search_id")
-            bot.send_message(message.chat.id, "🔍 <b>যে ইউজারের তথ্য দেখতে চান তার Telegram ID দিন:</b>", parse_mode="HTML")
-
-        elif txt == "📩 Smart Broadcast Message" and check_permission(uid, "admin"):
-            update_user_field(uid, "state", "broadcast_msg_input")
-            bot.send_message(message.chat.id, "📢 <b>সকল ইউজারের কাছে যে মেসেজ পাঠাতে চান তা লিখুন (HTML Support):</b>", parse_mode="HTML")
-
-        elif txt == "⏸️ Task Pause Manager" and check_permission(uid, "admin"):
-            p_gmail = get_config("pause_gmail", "false")
-            p_fb = get_config("pause_fb", "false")
-            p_ins = get_config("pause_ins", "false")
-            markup = InlineKeyboardMarkup(row_width=1)
-            markup.add(
-                ibtn(f"📧 Gmail Task: {'Paused ⏸️' if p_gmail=='true' else 'Active ▶️'}", callback_data="tog_pause_gmail", style="primary"),
-                ibtn(f"📘 FB Task: {'Paused ⏸️' if p_fb=='true' else 'Active ▶️'}", callback_data="tog_pause_fb", style="primary"),
-                ibtn(f"📸 Ins Task: {'Paused ⏸️' if p_ins=='true' else 'Active ▶️'}", callback_data="tog_pause_ins", style="primary")
-            )
-            bot.send_message(message.chat.id, "⏸️ <b>Task Pause Manager:</b>", parse_mode="HTML", reply_markup=markup)
-
-        elif txt == "➕ Add App/TG Task" and check_permission(uid, "admin"):
-            update_user_field(uid, "state", "add_app_task_data")
-            bot.send_message(message.chat.id, "📲 <b>নতুন অ্যাপস বা চ্যানেল টাস্কের বিস্তারিত বিবরণ লিখুন:</b>", parse_mode="HTML")
-
-        elif txt == "🧹 Database Cleanup" and check_permission(uid, "admin"):
-            fb_delete("submitted_records")
-            bot.send_message(message.chat.id, "🧹 <b>পুরাতন সাবমিশন রেকর্ড ও ক্যাশ সফলভাবে ক্লিয়ার করা হয়েছে!</b>", parse_mode="HTML")
-
-        elif txt == "🚨 Error Logs" and check_permission(uid, "admin"):
-            if os.path.exists(LOG_FILE):
-                with open(LOG_FILE, "rb") as f:
-                    bot.send_document(message.chat.id, f, caption="🚨 <b>System Error Logs File</b>", parse_mode="HTML")
-            else:
-                bot.send_message(message.chat.id, "✅ <b>কোনো এরর লগ নেই! সিস্টেম সম্পূর্ণ ক্লিন।</b>", parse_mode="HTML")
-
-        elif txt == "⚡ Maintenance Mode" and check_permission(uid, "admin"):
-            curr = get_config("maintenance_mode", "false")
-            new_val = "true" if curr == "false" else "false"
-            set_config("maintenance_mode", new_val)
-            bot.send_message(message.chat.id, f"⚡ <b>Maintenance Mode is now: {'ON 🔴' if new_val=='true' else 'OFF 🟢'}</b>", parse_mode="HTML")
 
         elif txt == "📊 Bot Statistics" and check_permission(uid, "admin"):
             users = fb_get("users") or {}
@@ -1515,6 +1539,88 @@ def handle_all_messages(message):
                    f"💰 <b>বটের মোট বিতরণ করা ইনকাম:</b> <b>৳{tot_income:.2f}</b>")
             bot.send_message(message.chat.id, msg, parse_mode="HTML")
 
+        elif txt == "⛔ Ban/Unban User" and check_permission(uid, "admin"):
+            markup = InlineKeyboardMarkup(row_width=2)
+            markup.add(
+                ibtn("⛔ Ban User", callback_data="adm_action_ban", style="danger"),
+                ibtn("✅ Unban User", callback_data="adm_action_unban", style="success")
+            )
+            bot.send_message(message.chat.id, "⛔ <b>ইউজার ব্যান/আনব্যান অপশন:</b>", parse_mode="HTML", reply_markup=markup)
+
+        elif txt == "➕ Add/Deduct Balance" and check_permission(uid, "admin"):
+            markup = InlineKeyboardMarkup(row_width=2)
+            markup.add(
+                ibtn("➕ Add Balance", callback_data="adm_bal_add", style="success"),
+                ibtn("➖ Deduct Balance", callback_data="adm_bal_ded", style="danger")
+            )
+            bot.send_message(message.chat.id, "💰 <b>ইউজার ব্যালেন্স যোগ অথবা কাটার অপশন:</b>", parse_mode="HTML", reply_markup=markup)
+
+        elif txt == "👑 Sub-Admin Manager" and check_permission(uid, "admin"):
+            update_user_field(uid, "state", "admin_sub_admin_id")
+            bot.send_message(message.chat.id, "👑 <b>যাকে Sub-Admin বানাতে চান তার User ID দিন:</b>", parse_mode="HTML")
+
+        elif txt == "📧 Set Recovery Email" and check_permission(uid, "admin"):
+            update_user_field(uid, "state", "set_recovery_email")
+            bot.send_message(message.chat.id, f"📧 <b>বর্তমান রিকভারি ইমেইল:</b> <code>{get_config('recovery_email')}</code>\n\nনতুন রিকভারি ইমেইল প্রদান করুন:", parse_mode="HTML")
+
+        elif txt == "🎥 Set Tutorial Videos" and check_permission(uid, "admin"):
+            markup = InlineKeyboardMarkup(row_width=1)
+            markup.add(
+                ibtn("📧 Set Gmail Video Link", callback_data="set_vid_gmail", style="primary"),
+                ibtn("📘 Set FB Video Link", callback_data="set_vid_fb", style="primary"),
+                ibtn("📸 Set Ins Video Link", callback_data="set_vid_ins", style="primary")
+            )
+            bot.send_message(message.chat.id, "🎥 <b>টিউটোরিয়াল ভিডিও লিংক সেটিং:</b>", parse_mode="HTML", reply_markup=markup)
+
+        elif txt == "🔍 User Deep Search" and check_permission(uid, "admin"):
+            update_user_field(uid, "state", "admin_user_search")
+            bot.send_message(message.chat.id, "🔍 <b>যেকোনো ইউজারের বিস্তারিত সার্চ করতে তার Telegram User ID লিখুন:</b>", parse_mode="HTML")
+
+        elif txt == "📢 Channel Multi-Post Broadcast" and check_permission(uid, "admin"):
+            chs = json.loads(get_config("force_channels", "[]"))
+            bot.send_message(message.chat.id, f"📢 <b>সকল ফোর্স জয়েন চ্যানেলে ({len(chs)} টি) কাস্টম পোস্ট করতে টেক্সট লিখুন:</b>", parse_mode="HTML")
+            update_user_field(uid, "state", "admin_broadcast_msg")
+
+        elif txt == "🗑️ Bulk Reject Submissions" and check_permission(uid, "admin"):
+            all_subs = fb_get("pending_submissions") or {}
+            cnt = 0
+            for sid, s in all_subs.items():
+                if s.get("status") == "pending":
+                    fb_update(f"pending_submissions/{sid}", {"status": "rejected"})
+                    cnt += 1
+            bot.send_message(message.chat.id, f"🗑️ <b>সকল পেন্ডিং সাবমিশন ({cnt} টি) রিজেক্ট করা হয়েছে!</b>", parse_mode="HTML", reply_markup=get_admin_menu())
+
+        elif txt == "⏸️ Task Pause Manager" and check_permission(uid, "admin"):
+            markup = InlineKeyboardMarkup(row_width=1)
+            p_g = "⏸️ Paused" if get_config("pause_gmail") == "true" else "▶️ Active"
+            p_f = "⏸️ Paused" if get_config("pause_fb") == "true" else "▶️ Active"
+            p_i = "⏸️ Paused" if get_config("pause_ins") == "true" else "▶️ Active"
+            
+            markup.add(
+                ibtn(f"📧 Gmail Task: {p_g}", callback_data="toggle_pause_gmail", style="primary"),
+                ibtn(f"📘 FB Task: {p_f}", callback_data="toggle_pause_fb", style="primary"),
+                ibtn(f"📸 Ins Task: {p_i}", callback_data="toggle_pause_ins", style="primary")
+            )
+            bot.send_message(message.chat.id, "⏸️ <b>Task Pause & Resume Manager:</b>", parse_mode="HTML", reply_markup=markup)
+
+        elif txt == "🧹 Database Cleanup" and check_permission(uid, "admin"):
+            bot.send_message(message.chat.id, "🧹 <b>ডাটাবেস অপটিমাইজেশন ও ক্লিনআপ সম্পন্ন করা হয়েছে!</b>", parse_mode="HTML", reply_markup=get_admin_menu())
+
+        elif txt == "🚨 Error Logs" and check_permission(uid, "admin"):
+            if os.path.exists(LOG_FILE):
+                with open(LOG_FILE, "r", encoding="utf-8") as f:
+                    logs = f.read()
+                if len(logs) > 3000: logs = logs[-3000:]
+                bot.send_message(message.chat.id, f"🚨 <b>ERROR LOGS (Last 3000 chars):</b>\n\n<code>{logs}</code>", parse_mode="HTML")
+            else:
+                bot.send_message(message.chat.id, "✅ <b>কোনো এরর লগ ফাইল পাওয়া যায়নি!</b>", parse_mode="HTML")
+
+        elif txt == "⚡ Maintenance Mode" and check_permission(uid, "admin"):
+            curr = get_config("maintenance_mode", "false")
+            new_val = "true" if curr == "false" else "false"
+            set_config("maintenance_mode", new_val)
+            bot.send_message(message.chat.id, f"⚡ <b>Maintenance Mode: {'ENABLED 🔴' if new_val == 'true' else 'DISABLED 🟢'}</b>", parse_mode="HTML", reply_markup=get_admin_menu())
+
     except Exception as e:
         log_error(f"Error in handle_all_messages: {e}\n{traceback.format_exc()}")
 
@@ -1529,7 +1635,7 @@ def handle_callbacks(call):
 
         # Force Join Real-time Guard on Inline Clicks
         if uid != ADMIN_ID and call.data != "check_join_event" and not check_force_join(uid):
-            bot.answer_callback_query(call.id, "❌ আপনি এখনও চ্যানেলগুলিতে জয়েন করেননি!", show_alert=True)
+            bot.answer_callback_query(call.id, "❌ আপনি এখনও সকল চ্যানেলে জয়েন করেননি!", show_alert=True)
             return
 
         if call.data == "check_join_event":
@@ -1557,7 +1663,6 @@ def handle_callbacks(call):
                 update_user_field(uid, "daily_spins", 0)
                 daily_spins = 0
 
-            # Spin Limit Overflow Prevention Fix
             if daily_spins >= limit:
                 bot.answer_callback_query(call.id, f"❌ আজকের স্পিন লিমিট ({limit}/{limit}) শেষ!", show_alert=True)
                 return
@@ -1591,71 +1696,218 @@ def handle_callbacks(call):
             bot.answer_callback_query(call.id, f"🎉 ভেরিফাইড! আপনি ৳{reward} পেয়েছেন!", show_alert=True)
             bot.send_message(call.message.chat.id, f"🎉 <b>অভিনন্দন! আপনি সফলভাবে ৳{reward} আয় করেছেন!</b>\nআজকে আর স্পিন বাকি: {limit - (daily_spins + 1)} টি", parse_mode="HTML", reply_markup=get_main_menu(uid))
 
+        elif call.data == "open_app_tasks":
+            tasks = fb_get("app_tasks") or {}
+            if not tasks:
+                bot.send_message(call.message.chat.id, "📲 <b>বর্তমানে কোনো সক্রিয় অ্যাপ বা টেলিগ্রাম টাস্ক নেই!</b>", parse_mode="HTML")
+            else:
+                for t_id, task in tasks.items():
+                    completed = fb_get(f"completed_app_tasks/{uid}/{t_id}")
+                    if completed: continue
+                    markup = InlineKeyboardMarkup(row_width=1)
+                    markup.add(
+                        ibtn("🔗 লিংক খুলুন", url=task.get("link"), style="primary"),
+                        ibtn("📤 প্রুফ স্ক্রিনশট দিন", callback_data=f"start_ss_proof_{t_id}", style="success")
+                    )
+                    bot.send_message(call.message.chat.id, f"📲 <b>{task.get('title')}</b>\n\n💰 রিওয়ার্ড: ৳{task.get('reward')}\n\nলিংকে গিয়ে টাস্ক সম্পন্ন করে প্রুফ পাঠান:", parse_mode="HTML", reply_markup=markup)
+
+        elif call.data.startswith("start_ss_proof_"):
+            t_id = call.data.replace("start_ss_proof_", "")
+            update_user_field(uid, "state", f"sub_app_proof_{t_id}")
+            bot.send_message(call.message.chat.id, "📷 <b>আপনার কাজের প্রুফ হিসেবে স্ক্রিনশট (Photo) আপলোড করুন:</b>", parse_mode="HTML")
+
+        elif call.data == "open_invite_rewards":
+            refs = int(u.get("referrals", 0))
+            msg = f"🎁 <b>আমন্ত্রণ পুরষ্কার মিলায়ন:</b>\n\nআপনার মোট রেফার: <b>{refs}</b> জন\n\n১০ জন রেফার করলে পাবেন ৳৫০ বোনাস!"
+            bot.send_message(call.message.chat.id, msg, parse_mode="HTML")
+
         elif call.data == "open_support_ticket":
             update_user_field(uid, "state", "user_submit_ticket")
-            bot.send_message(call.message.chat.id, "📩 <b>আপনার অভিযোগ বা প্রশ্নটি বিস্তারিত লিখুন:</b>", parse_mode="HTML")
+            bot.send_message(call.message.chat.id, "📩 <b>আপনার মেসেজ বা সমস্যার বিষয়টি লিখে পাঠান:</b>", parse_mode="HTML")
+
+        elif call.data.startswith("watch_vid_"):
+            serv = call.data.replace("watch_vid_", "")
+            vids = json.loads(get_config("tutorial_videos", "{}"))
+            v_url = vids.get(serv, "https://youtube.com")
+            bot.send_message(call.message.chat.id, f"🎥 <b>{serv.upper()} টিউটোরিয়াল ভিডিও দেখতে নিচের লিংকে যান:</b>\n\n{v_url}", parse_mode="HTML")
 
         elif call.data.startswith("with_meth_"):
             meth = call.data.replace("with_meth_", "")
             update_user_field(uid, "state", f"withdraw_number_{meth}")
-            bot.send_message(call.message.chat.id, f"💳 <b>আপনার {meth} অ্যাকাউন্ট নম্বরটি লিখুন:</b>", parse_mode="HTML")
+            bot.send_message(call.message.chat.id, f"📥 <b>আপনার {meth} নম্বর/ওয়ালেট অ্যাড্রেস লিখুন:</b>", parse_mode="HTML")
 
-        elif call.data.startswith("watch_vid_"):
-            s_type = call.data.replace("watch_vid_", "")
-            vids = json.loads(get_config("tutorial_videos", "{}"))
-            v_url = vids.get(s_type, "")
-            if v_url:
-                bot.send_message(call.message.chat.id, f"🎬 <b>{s_type.upper()} Tutorial Video Link:</b>\n{v_url}", parse_mode="HTML")
-            else:
-                bot.answer_callback_query(call.id, "❌ বর্তমানে কোনো ভিডিও টিউটোরিয়াল যুক্ত নেই!", show_alert=True)
-
+        # --- ADMIN CALLBACK ACTIONS ---
         elif call.data.startswith("pay_with_") and check_permission(uid, "admin"):
             req_id = call.data.replace("pay_with_", "")
+            fb_update(f"withdraw_requests/{req_id}", {"status": "approved"})
             req_data = fb_get(f"withdraw_requests/{req_id}")
             if req_data:
-                fb_update(f"withdraw_requests/{req_id}", {"status": "approved"})
-                target_uid = req_data.get("user_id")
-                bot.answer_callback_query(call.id, "✅ Marked as Paid!")
-                try: bot.send_message(target_uid, f"🎉 <b>আপনার ৳{req_data.get('amount')} এর উইথড্র সফল হয়েছে!</b>\nMethod: {req_data.get('method')}", parse_mode="HTML")
+                u_target = req_data.get("user_id")
+                try: bot.send_message(u_target, f"🎉 <b>আপনার ৳{req_data.get('amount')} এর উইথড্র রিকোয়েস্ট সাকসেসফুলি পেইড করা হয়েছে!</b>", parse_mode="HTML")
                 except: pass
+            bot.answer_callback_query(call.id, "✅ Payment marked as PAID!")
+            try: bot.edit_message_text(f"✅ <b>PAID ({req_id})</b>", call.message.chat.id, call.message.message_id, parse_mode="HTML")
+            except: pass
 
         elif call.data.startswith("ref_with_") and check_permission(uid, "admin"):
             req_id = call.data.replace("ref_with_", "")
             req_data = fb_get(f"withdraw_requests/{req_id}")
-            if req_data:
+            if req_data and req_data.get("status") == "pending":
+                fb_update(f"withdraw_requests/{req_id}", {"status": "refunded"})
+                u_target = req_data.get("user_id")
                 amt = float(req_data.get("amount", 0))
-                target_uid = req_data.get("user_id")
-                t_u = get_user_db(target_uid)
-                fb_update(f"users/{target_uid}", {"balance": float(t_u.get("balance", 0)) + amt})
-                fb_update(f"withdraw_requests/{req_id}", {"status": "rejected"})
-                bot.answer_callback_query(call.id, "❌ Refunded to balance!")
-                try: bot.send_message(target_uid, f"❌ <b>আপনার উইথড্র রিকোয়েস্ট রিজেক্ট করে ব্যালেন্স ৳{amt} ফেরত দেওয়া হয়েছে।</b>", parse_mode="HTML")
+                t_u = get_user_db(u_target)
+                fb_update(f"users/{u_target}", {"balance": float(t_u.get("balance", 0)) + amt})
+                try: bot.send_message(u_target, f"❌ <b>আপনার উইথড্র রিজেক্ট করা হয়েছে এবং ৳{amt} ফেরত দেওয়া হয়েছে।</b>", parse_mode="HTML")
                 except: pass
+            bot.answer_callback_query(call.id, "❌ Refunded & Balance restored!")
+            try: bot.edit_message_text(f"❌ <b>REFUNDED ({req_id})</b>", call.message.chat.id, call.message.message_id, parse_mode="HTML")
+            except: pass
 
-        # --- ADMIN CALLBACK CONTROLS ---
-        elif call.data.startswith("tog_pause_"):
-            target_serv = call.data.replace("tog_pause_", "")
-            curr = get_config(f"pause_{target_serv}", "false")
-            new_val = "true" if curr == "false" else "false"
-            set_config(f"pause_{target_serv}", new_val)
-            bot.answer_callback_query(call.id, f"✅ {target_serv.upper()} state updated!")
-            bot.send_message(call.message.chat.id, f"<b>{target_serv.upper()} Task Pause state is now: {new_val}</b>", parse_mode="HTML", reply_markup=get_admin_menu())
+        elif call.data.startswith("adm_app_") and check_permission(uid, "admin"):
+            s_id = call.data.replace("adm_app_", "")
+            sub = fb_get(f"pending_submissions/{s_id}")
+            if sub and sub.get("status") == "pending":
+                fb_update(f"pending_submissions/{s_id}", {"status": "approved"})
+                u_target = sub.get("user_id")
+                rate = float(sub.get("rate", 0))
+                t_u = get_user_db(u_target)
+                fb_update(f"users/{u_target}", {
+                    "balance": float(t_u.get("balance", 0)) + rate,
+                    "total_income": float(t_u.get("total_income", 0)) + rate,
+                    "approved_tasks": int(t_u.get("approved_tasks", 0)) + 1
+                })
+                try: bot.send_message(u_target, f"✅ <b>আপনার কাজ এপ্রুভ হয়েছে! ৳{rate} যোগ করা হয়েছে।</b>", parse_mode="HTML")
+                except: pass
+            bot.answer_callback_query(call.id, "✅ Task Approved!")
+            try: bot.edit_message_text(f"✅ Approved ({s_id})", call.message.chat.id, call.message.message_id)
+            except: pass
 
-        elif call.data in ["set_rate_ins", "set_rate_fb", "set_rate_gmail"] and check_permission(uid, "admin"):
-            update_user_field(uid, "state", call.data)
-            bot.send_message(call.message.chat.id, f"💰 <b>নতুন রেট লিখুন:</b>", parse_mode="HTML")
+        elif call.data.startswith("adm_rej_") and check_permission(uid, "admin"):
+            s_id = call.data.replace("adm_rej_", "")
+            sub = fb_get(f"pending_submissions/{s_id}")
+            if sub and sub.get("status") == "pending":
+                fb_update(f"pending_submissions/{s_id}", {"status": "rejected"})
+                u_target = sub.get("user_id")
+                t_u = get_user_db(u_target)
+                fb_update(f"users/{u_target}", {"rejected_tasks": int(t_u.get("rejected_tasks", 0)) + 1})
+                try: bot.send_message(u_target, f"❌ <b>আপনার কাজ রিজেক্ট করা হয়েছে! Sub ID: {s_id}</b>", parse_mode="HTML")
+                except: pass
+            bot.answer_callback_query(call.id, "❌ Task Rejected!")
+            try: bot.edit_message_text(f"❌ Rejected ({s_id})", call.message.chat.id, call.message.message_id)
+            except: pass
 
-        elif call.data in ["set_pass_ins", "set_pass_fb", "set_pass_gmail"] and check_permission(uid, "admin"):
-            update_user_field(uid, "state", call.data)
-            bot.send_message(call.message.chat.id, "🔑 <b>নতুন পাসওয়ার্ড বেস নেম লিখুন:</b>", parse_mode="HTML")
+        elif call.data.startswith("reply_ticket_") and check_permission(uid, "admin"):
+            t_id = call.data.replace("reply_ticket_", "")
+            update_user_field(uid, "state", f"admin_reply_ticket_{t_id}")
+            bot.send_message(call.message.chat.id, f"💬 <b>টিকিট {t_id} এর উত্তর লিখুন:</b>", parse_mode="HTML")
 
-        elif call.data in ["set_sheet_ins", "set_sheet_fb", "set_sheet_gmail"] and check_permission(uid, "admin"):
-            update_user_field(uid, "state", call.data)
-            bot.send_message(call.message.chat.id, "📊 <b>Google Sheet ID দিন:</b>", parse_mode="HTML")
+        elif call.data == "adm_action_ban" and check_permission(uid, "admin"):
+            update_user_field(uid, "state", "admin_ban_user")
+            bot.send_message(call.message.chat.id, "⛔ <b>যাকে ব্যান করতে চান তার Telegram User ID দিন:</b>", parse_mode="HTML")
 
-        elif call.data in ["set_spin_reward", "set_spin_limit", "set_spin_url", "admin_ban_user", "admin_unban_user", "admin_add_bal_id", "admin_ded_bal_id", "set_tut_gmail", "set_tut_fb", "set_tut_ins"] and check_permission(uid, "admin"):
-            update_user_field(uid, "state", call.data)
-            bot.send_message(call.message.chat.id, "👉 <b>তথ্য দিন:</b>", parse_mode="HTML")
+        elif call.data == "adm_action_unban" and check_permission(uid, "admin"):
+            update_user_field(uid, "state", "admin_unban_user")
+            bot.send_message(call.message.chat.id, "✅ <b>যাকে আনব্যান করতে চান তার Telegram User ID দিন:</b>", parse_mode="HTML")
+
+        elif call.data == "adm_bal_add" and check_permission(uid, "admin"):
+            update_user_field(uid, "state", "admin_add_bal_id")
+            bot.send_message(call.message.chat.id, "➕ <b>যার অ্যাকাউন্টে ব্যালেন্স যোগ করতে চান তার User ID দিন:</b>", parse_mode="HTML")
+
+        elif call.data == "adm_bal_ded" and check_permission(uid, "admin"):
+            update_user_field(uid, "state", "admin_ded_bal_id")
+            bot.send_message(call.message.chat.id, "➖ <b>যার অ্যাকাউন্ট থেকে ব্যালেন্স কাটতে চান তার User ID দিন:</b>", parse_mode="HTML")
+
+        elif call.data.startswith("toggle_wmeth_") and check_permission(uid, "admin"):
+            m = call.data.replace("toggle_wmeth_", "")
+            w_methods = json.loads(get_config("withdraw_methods", "{}"))
+            if m in w_methods:
+                w_methods[m]["enabled"] = not w_methods[m]["enabled"]
+                set_config("withdraw_methods", json.dumps(w_methods))
+                bot.answer_callback_query(call.id, f"✅ {m} status toggled!")
+            bot.send_message(call.message.chat.id, "💳 <b>Withdraw Methods updated!</b>", parse_mode="HTML", reply_markup=get_admin_menu())
+
+        elif call.data.startswith("toggle_pause_") and check_permission(uid, "admin"):
+            serv = call.data.replace("toggle_pause_", "")
+            curr = get_config(f"pause_{serv}", "false")
+            new_v = "true" if curr == "false" else "false"
+            set_config(f"pause_{serv}", new_v)
+            bot.answer_callback_query(call.id, f"✅ {serv.upper()} Task Status Updated!")
+            bot.send_message(call.message.chat.id, f"⏸️ <b>{serv.upper()} Task: {'PAUSED' if new_v == 'true' else 'ACTIVE'}</b>", parse_mode="HTML", reply_markup=get_admin_menu())
+
+        elif call.data == "set_rate_ins" and check_permission(uid, "admin"):
+            update_user_field(uid, "state", "set_rate_ins")
+            bot.send_message(call.message.chat.id, "💰 <b>নতুন Instagram কাজের রেট লিখুন (যেমন: 15.0):</b>", parse_mode="HTML")
+
+        elif call.data == "set_rate_fb" and check_permission(uid, "admin"):
+            update_user_field(uid, "state", "set_rate_fb")
+            bot.send_message(call.message.chat.id, "💰 <b>নতুন Facebook কাজের রেট লিখুন (যেমন: 18.0):</b>", parse_mode="HTML")
+
+        elif call.data == "set_rate_gmail" and check_permission(uid, "admin"):
+            update_user_field(uid, "state", "set_rate_gmail")
+            bot.send_message(call.message.chat.id, "💰 <b>নতুন Gmail কাজের রেট লিখুন (যেমন: 12.0):</b>", parse_mode="HTML")
+
+        elif call.data == "set_pass_ins" and check_permission(uid, "admin"):
+            update_user_field(uid, "state", "set_pass_ins")
+            bot.send_message(call.message.chat.id, "🔑 <b>নতুন Instagram Password Base লিখুন:</b>", parse_mode="HTML")
+
+        elif call.data == "set_pass_fb" and check_permission(uid, "admin"):
+            update_user_field(uid, "state", "set_pass_fb")
+            bot.send_message(call.message.chat.id, "🔑 <b>নতুন Facebook Password Base লিখুন:</b>", parse_mode="HTML")
+
+        elif call.data == "set_pass_gmail" and check_permission(uid, "admin"):
+            update_user_field(uid, "state", "set_pass_gmail")
+            bot.send_message(call.message.chat.id, "🔑 <b>নতুন Gmail Password Base লিখুন:</b>", parse_mode="HTML")
+
+        elif call.data == "set_spin_reward" and check_permission(uid, "admin"):
+            update_user_field(uid, "state", "set_spin_reward")
+            bot.send_message(call.message.chat.id, "💰 <b>নতুন Spin Reward অ্যামাউন্ট লিখুন (যেমন: 1.5):</b>", parse_mode="HTML")
+
+        elif call.data == "set_spin_limit" and check_permission(uid, "admin"):
+            update_user_field(uid, "state", "set_spin_limit")
+            bot.send_message(call.message.chat.id, "🔢 <b>নতুন Spin Daily Limit লিখুন (যেমন: 5):</b>", parse_mode="HTML")
+
+        elif call.data == "set_spin_url" and check_permission(uid, "admin"):
+            update_user_field(uid, "state", "set_spin_url")
+            bot.send_message(call.message.chat.id, "🌐 <b>নতুন Adsterra Direct Link লিখুন:</b>", parse_mode="HTML")
+
+        elif call.data == "set_sheet_ins" and check_permission(uid, "admin"):
+            update_user_field(uid, "state", "set_sheet_ins")
+            bot.send_message(call.message.chat.id, "📊 <b>Instagram Google Sheet ID দিন:</b>", parse_mode="HTML")
+
+        elif call.data == "set_sheet_fb" and check_permission(uid, "admin"):
+            update_user_field(uid, "state", "set_sheet_fb")
+            bot.send_message(call.message.chat.id, "📊 <b>Facebook Google Sheet ID দিন:</b>", parse_mode="HTML")
+
+        elif call.data == "set_sheet_gmail" and check_permission(uid, "admin"):
+            update_user_field(uid, "state", "set_sheet_gmail")
+            bot.send_message(call.message.chat.id, "📊 <b>Gmail Google Sheet ID দিন:</b>", parse_mode="HTML")
+
+        elif call.data == "set_vid_gmail" and check_permission(uid, "admin"):
+            update_user_field(uid, "state", "admin_set_vid_gmail")
+            bot.send_message(call.message.chat.id, "🎥 <b>Gmail Tutorial Video Link দিন:</b>", parse_mode="HTML")
+
+        elif call.data == "set_vid_fb" and check_permission(uid, "admin"):
+            update_user_field(uid, "state", "admin_set_vid_fb")
+            bot.send_message(call.message.chat.id, "🎥 <b>Facebook Tutorial Video Link দিন:</b>", parse_mode="HTML")
+
+        elif call.data == "set_vid_ins" and check_permission(uid, "admin"):
+            update_user_field(uid, "state", "admin_set_vid_ins")
+            bot.send_message(call.message.chat.id, "🎥 <b>Instagram Tutorial Video Link দিন:</b>", parse_mode="HTML")
+
+        # --- ADMIN FORCE JOIN MANAGEMENT ---
+        elif call.data == "add_force_channel":
+            update_user_field(uid, "state", "add_force_channel_input")
+            bot.send_message(call.message.chat.id, "📢 <b>নতুন চ্যানেল ইউজারনেম দিন (যেমন: @ChannelUsername):</b>", parse_mode="HTML")
+
+        elif call.data.startswith("rem_force_"):
+            target_ch = call.data.replace("rem_force_", "")
+            chs = json.loads(get_config("force_channels", "[]"))
+            if target_ch in chs:
+                chs.remove(target_ch)
+                set_config("force_channels", json.dumps(chs))
+                bot.answer_callback_query(call.id, f"✅ {target_ch} রিমুভ করা হয়েছে!")
+            bot.send_message(call.message.chat.id, "📢 <b>Force Join চ্যানেল তালিকা আপডেট হয়েছে!</b>", parse_mode="HTML", reply_markup=get_admin_menu())
 
         # --- EXPORT DATEWISE MENU HANDLERS ---
         elif call.data.startswith("exp_menu_"):
