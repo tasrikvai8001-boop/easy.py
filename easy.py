@@ -10,21 +10,22 @@ import threading
 import traceback
 import smtplib
 import pyotp
+import urllib.parse
 from datetime import datetime, timedelta
 
 # --- AUTOMATIC DEPENDENCY CHECK & INSTALLATION ---
-REQUIRED_PACKAGES = ["flask", "pyTelegramBotAPI", "gspread", "oauth2client", "pyotp", "pyrebase4", "openpyxl"]
+REQUIRED_PACKAGES = ["flask", "pyTelegramBotAPI", "gspread", "oauth2client", "pyotp", "openpyxl", "requests"]
 for pkg in REQUIRED_PACKAGES:
-    mod = "telebot" if pkg == "pyTelegramBotAPI" else ("pyrebase" if pkg == "pyrebase4" else pkg)
+    mod = "telebot" if pkg == "pyTelegramBotAPI" else pkg
     if importlib.util.find_spec(mod) is None:
         subprocess.check_call([sys.executable, "-m", "pip", "install", pkg])
 
 from flask import Flask
+import requests
 import telebot
 from telebot.types import ReplyKeyboardMarkup, KeyboardButton, InlineKeyboardMarkup, InlineKeyboardButton
 import gspread
 from oauth2client.service_account import ServiceAccountCredentials
-import pyrebase
 import openpyxl
 from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 from openpyxl.utils import get_column_letter
@@ -36,7 +37,7 @@ app = Flask('')
 
 @app.route('/')
 def home():
-    return "EASY EARN BD Firebase Engine is Running 24/7!"
+    return "EASY EARN BD Full Feature Engine Running 24/7!"
 
 def run_web_server():
     port = int(os.environ.get("PORT", 8080))
@@ -58,20 +59,8 @@ JSON_CREDS_FILE = "credentials.json"
 
 bot = telebot.TeleBot(TOKEN, num_threads=50)
 
-# FIREBASE CONFIGURATION
-firebase_config = {
-  "apiKey": "AIzaSyBGABXnrP66oCndR0a6Hza3m2pehk2JgcE",
-  "authDomain": "fast-cash-out.firebaseapp.com",
-  "databaseURL": "https://fast-cash-out-default-rtdb.firebaseio.com",
-  "projectId": "fast-cash-out",
-  "storageBucket": "fast-cash-out.firebasestorage.app",
-  "messagingSenderId": "860839345974",
-  "appId": "1:860839345974:web:25c10d619e5c71d0297d97",
-  "measurementId": "G-1JSWJVREF2"
-}
-
-firebase = pyrebase.initialize_app(firebase_config)
-db = firebase.database()
+# FIREBASE RTDB CONFIGURATION
+FIREBASE_URL = "https://fast-cash-out-default-rtdb.firebaseio.com"
 
 # --- ERROR & AUDIT LOGGERS ---
 def log_error(err_msg):
@@ -88,118 +77,133 @@ def log_admin_action(admin_id, action_desc):
         pass
 
 # ============================================
-# --- FIREBASE DATABASE MANAGEMENT SYSTEM ---
+# --- FIREBASE REST DATABASE ENGINE ---
 # ============================================
-def init_db():
+def fb_get(path):
     try:
-        default_emojis = {
-            "balance": "💰", "work": "💼", "withdraw": "📥", "invite": "👥",
-            "support": "🎧", "newbie": "❓", "instagram": "📸", "facebook": "📘",
-            "gmail": "📧", "spin": "🌀", "task": "📲", "success": "✅",
-            "error": "❌", "warning": "⚠️", "lock": "🔐", "admin": "⚙️"
-        }
-
-        defaults = {
-            "force_channels": json.dumps([]),
-            "ref_bonus": "10.0",
-            "rate_ins": "15.0",
-            "rate_fb": "18.0",
-            "rate_gmail": "12.0",
-            "ins_pass": "Nabil",
-            "fb_pass": "Nabil",
-            "gmail_pass": "Nabil",
-            "recovery_email": "tasrikvai8001@gmail.com",
-            "emojis": json.dumps(default_emojis),
-            "spin_ad_url": "https://example.com/adsterra",
-            "spin_reward": "1.5",
-            "spin_limit": "5",
-            "sheet_id_ins": "",
-            "sheet_id_fb": "",
-            "sheet_id_gmail": "",
-            "json_credentials": "",
-            "firebase_api": json.dumps(firebase_config),
-            "tutorial_videos": json.dumps({"gmail": "", "fb": "", "ins": ""}),
-            "withdraw_methods": json.dumps({
-                "bKash": {"enabled": True, "min": 50.0, "max": 5000.0},
-                "Nagad": {"enabled": True, "min": 50.0, "max": 5000.0},
-                "Rocket": {"enabled": True, "min": 50.0, "max": 5000.0},
-                "USDT BEP20": {"enabled": True, "min": 100.0, "max": 10000.0}
-            }),
-            "maintenance_mode": "false",
-            "pause_gmail": "false",
-            "pause_fb": "false",
-            "pause_ins": "false",
-            "daily_bot_withdraw_limit": "50000.0",
-            "today_total_withdrawn": "0.0",
-            "last_withdraw_reset_date": ""
-        }
-        
-        existing_cfg = db.child("config").get().val() or {}
-        for k, v in defaults.items():
-            if k not in existing_cfg:
-                db.child("config").child(k).set(str(v))
+        res = requests.get(f"{FIREBASE_URL}/{path}.json", timeout=10)
+        return res.json() if res.status_code == 200 else None
     except Exception as e:
-        log_error(f"Firebase Init Error: {e}")
+        log_error(f"Firebase GET Error ({path}): {e}")
+        return None
+
+def fb_set(path, data):
+    try:
+        res = requests.put(f"{FIREBASE_URL}/{path}.json", json=data, timeout=10)
+        return res.status_code == 200
+    except Exception as e:
+        log_error(f"Firebase SET Error ({path}): {e}")
+        return False
+
+def fb_update(path, data):
+    try:
+        res = requests.patch(f"{FIREBASE_URL}/{path}.json", json=data, timeout=10)
+        return res.status_code == 200
+    except Exception as e:
+        log_error(f"Firebase UPDATE Error ({path}): {e}")
+        return False
+
+def fb_delete(path):
+    try:
+        res = requests.delete(f"{FIREBASE_URL}/{path}.json", timeout=10)
+        return res.status_code == 200
+    except Exception as e:
+        log_error(f"Firebase DELETE Error ({path}): {e}")
+        return False
+
+def init_db():
+    default_emojis = {
+        "balance": "💰", "work": "💼", "withdraw": "📥", "invite": "👥",
+        "support": "🎧", "newbie": "❓", "instagram": "📸", "facebook": "📘",
+        "gmail": "📧", "spin": "🌀", "task": "📲", "success": "✅",
+        "error": "❌", "warning": "⚠️", "lock": "🔐", "admin": "⚙️"
+    }
+
+    defaults = {
+        "force_channels": json.dumps([]),
+        "ref_bonus": "10.0",
+        "rate_ins": "15.0",
+        "rate_fb": "18.0",
+        "rate_gmail": "12.0",
+        "ins_pass": "Nabil",
+        "fb_pass": "Nabil",
+        "gmail_pass": "Nabil",
+        "recovery_email": "tasrikvai8001@gmail.com",
+        "emojis": json.dumps(default_emojis),
+        "spin_ad_url": "https://example.com/adsterra",
+        "spin_reward": "1.5",
+        "spin_limit": "5",
+        "sheet_id_ins": "",
+        "sheet_id_fb": "",
+        "sheet_id_gmail": "",
+        "json_credentials": "",
+        "firebase_api": "AIzaSyBGABXnrP66oCndR0a6Hza3m2pehk2JgcE",
+        "tutorial_videos": json.dumps({"gmail": "", "fb": "", "ins": ""}),
+        "withdraw_methods": json.dumps({
+            "bKash": {"enabled": True, "min": 50.0, "max": 5000.0},
+            "Nagad": {"enabled": True, "min": 50.0, "max": 5000.0},
+            "Rocket": {"enabled": True, "min": 50.0, "max": 5000.0},
+            "USDT BEP20": {"enabled": True, "min": 100.0, "max": 10000.0}
+        }),
+        "maintenance_mode": "false",
+        "pause_gmail": "false",
+        "pause_fb": "false",
+        "pause_ins": "false",
+        "daily_bot_withdraw_limit": "50000.0",
+        "today_total_withdrawn": "0.0",
+        "last_withdraw_reset_date": ""
+    }
+    
+    cfg = fb_get("config") or {}
+    for k, v in defaults.items():
+        if k not in cfg:
+            fb_set(f"config/{k}", str(v))
 
 init_db()
 
 def get_config(key, default=""):
-    try:
-        res = db.child("config").child(key).get().val()
-        return str(res) if res is not None else default
-    except Exception as e:
-        log_error(f"Firebase get_config Error ({key}): {e}")
-        return default
+    val = fb_get(f"config/{key}")
+    return str(val) if val is not None else default
 
 def set_config(key, value):
-    try:
-        db.child("config").child(key).set(str(value))
-    except Exception as e:
-        log_error(f"Firebase set_config Error ({key}): {e}")
+    fb_set(f"config/{key}", str(value))
 
 def get_user_db(user_id):
-    try:
-        u = db.child("users").child(str(user_id)).get().val()
-        now = time.time()
-        if not u:
-            u_data = {
-                "user_id": user_id,
-                "balance": 0.0,
-                "total_income": 0.0,
-                "total_withdraw": 0.0,
-                "referrals": 0,
-                "referred_by": None,
-                "ref_rewarded": 0,
-                "state": None,
-                "temp_data": '{}',
-                "role": 'user',
-                "permissions": '{}',
-                "is_banned": 0,
-                "approved_tasks": 0,
-                "rejected_tasks": 0,
-                "pending_tasks": 0,
-                "completed_accounts": 0,
-                "last_spin_time": 0,
-                "daily_spins": 0,
-                "last_spin_date": '',
-                "last_active": now,
-                "ip_address": None,
-                "created_at": now
-            }
-            db.child("users").child(str(user_id)).set(u_data)
-            return u_data
-        else:
-            db.child("users").child(str(user_id)).child("last_active").set(now)
-            return u
-    except Exception as e:
-        log_error(f"get_user_db Error ({user_id}): {e}")
-        return {}
+    u = fb_get(f"users/{user_id}")
+    now = time.time()
+    if not u:
+        u_data = {
+            "user_id": user_id,
+            "balance": 0.0,
+            "total_income": 0.0,
+            "total_withdraw": 0.0,
+            "referrals": 0,
+            "referred_by": None,
+            "ref_rewarded": 0,
+            "state": None,
+            "temp_data": '{}',
+            "role": 'user',
+            "permissions": '{}',
+            "is_banned": 0,
+            "approved_tasks": 0,
+            "rejected_tasks": 0,
+            "pending_tasks": 0,
+            "completed_accounts": 0,
+            "last_spin_time": 0,
+            "daily_spins": 0,
+            "last_spin_date": '',
+            "last_active": now,
+            "ip_address": None,
+            "created_at": now
+        }
+        fb_set(f"users/{user_id}", u_data)
+        return u_data
+    else:
+        fb_update(f"users/{user_id}", {"last_active": now})
+        return u
 
 def update_user_field(user_id, field, value):
-    try:
-        db.child("users").child(str(user_id)).child(field).set(value)
-    except Exception as e:
-        log_error(f"update_user_field Error ({user_id}, {field}): {e}")
+    fb_update(f"users/{user_id}", {field: value})
 
 def get_emoji(key):
     emojis = json.loads(get_config("emojis", "{}"))
@@ -273,7 +277,7 @@ def sync_sheet_approvals():
             sh = client.open_by_key(sheet_id)
             target_sheet = sh.sheet1
             records = target_sheet.get_all_records()
-            all_subs = db.child("pending_submissions").get().val() or {}
+            all_subs = fb_get("pending_submissions") or {}
 
             for idx, row in enumerate(records, start=2):
                 sub_id = str(row.get("Submit_ID") or row.get("ID") or "")
@@ -288,9 +292,9 @@ def sync_sheet_approvals():
                     rate = float(sub['rate'])
 
                     if status_val in ["ok", "approved"]:
-                        db.child("pending_submissions").child(sub_id).child("status").set("approved")
+                        fb_update(f"pending_submissions/{sub_id}", {"status": "approved"})
                         u = get_user_db(uid)
-                        db.child("users").child(str(uid)).update({
+                        fb_update(f"users/{uid}", {
                             "balance": float(u.get("balance", 0)) + rate,
                             "total_income": float(u.get("total_income", 0)) + rate,
                             "approved_tasks": int(u.get("approved_tasks", 0)) + 1,
@@ -302,7 +306,7 @@ def sync_sheet_approvals():
                         if ref_id:
                             ref_u = get_user_db(ref_id)
                             ref_comm = rate * 0.10
-                            db.child("users").child(str(ref_id)).update({
+                            fb_update(f"users/{ref_id}", {
                                 "balance": float(ref_u.get("balance", 0)) + ref_comm,
                                 "total_income": float(ref_u.get("total_income", 0)) + ref_comm
                             })
@@ -313,9 +317,9 @@ def sync_sheet_approvals():
                         except: pass
 
                     elif status_val in ["bad", "rejected"]:
-                        db.child("pending_submissions").child(sub_id).child("status").set("rejected")
+                        fb_update(f"pending_submissions/{sub_id}", {"status": "rejected"})
                         u = get_user_db(uid)
-                        db.child("users").child(str(uid)).update({
+                        fb_update(f"users/{uid}", {
                             "rejected_tasks": int(u.get("rejected_tasks", 0)) + 1,
                             "pending_tasks": max(0, int(u.get("pending_tasks", 0)) - 1)
                         })
@@ -396,10 +400,11 @@ def generate_random_identity():
 
 def check_duplicate_and_save(val, record_type, uid):
     try:
-        rec = db.child("submitted_records").child(str(val).replace(".", "_")).get().val()
+        clean_key = str(val).replace(".", "_").replace("#", "_").replace("$", "_").replace("[", "_").replace("]", "_")
+        rec = fb_get(f"submitted_records/{clean_key}")
         if rec:
             return True
-        db.child("submitted_records").child(str(val).replace(".", "_")).set({
+        fb_set(f"submitted_records/{clean_key}", {
             "record_value": val,
             "record_type": record_type,
             "user_id": uid,
@@ -412,7 +417,7 @@ def check_duplicate_and_save(val, record_type, uid):
 
 def get_daily_withdraw_count(user_id):
     try:
-        reqs = db.child("withdraw_requests").get().val() or {}
+        reqs = fb_get("withdraw_requests") or {}
         day_start = time.time() - 86400
         cnt = 0
         for r_id, r in reqs.items():
@@ -424,7 +429,7 @@ def get_daily_withdraw_count(user_id):
 
 def get_daily_support_count(user_id):
     try:
-        tickets = db.child("support_tickets").get().val() or {}
+        tickets = fb_get("support_tickets") or {}
         day_start = time.time() - 86400
         cnt = 0
         for t_id, t in tickets.items():
@@ -520,7 +525,7 @@ def automated_reengagement_cron():
     while True:
         try:
             time.sleep(86400) # Runs daily
-            users = db.child("users").get().val() or {}
+            users = fb_get("users") or {}
             three_days_ago = time.time() - (3 * 86400)
 
             for u_id, u_row in users.items():
@@ -584,7 +589,6 @@ def generate_custom_excel(service, rows, filename):
     ws.title = f"{service.upper()} Unsold Data"
     ws.views.sheetView[0].showGridLines = True
 
-    # Styling Palette
     header_fill = PatternFill(start_color="1F4E78", end_color="1F4E78", fill_type="solid")
     header_font = Font(name="Calibri", size=11, bold=True, color="FFFFFF")
     zebra_fill = PatternFill(start_color="F2F2F2", end_color="F2F2F2", fill_type="solid")
@@ -625,7 +629,6 @@ def generate_custom_excel(service, rows, filename):
             cell.alignment = center_align
             cell.font = Font(name="Calibri", size=10)
 
-    # Auto-fit columns
     for col in ws.columns:
         max_len = 0
         col_letter = get_column_letter(col[0].column)
@@ -724,7 +727,7 @@ def handle_all_messages(message):
                 serv = temp.get("export_service", "gmail")
                 try:
                     target_dt = datetime.strptime(txt, "%Y-%m-%d").date()
-                    all_subs = db.child("pending_submissions").get().val() or {}
+                    all_subs = fb_get("pending_submissions") or {}
                     matched = []
                     for sid, s in all_subs.items():
                         if s.get("sub_type") == serv and s.get("status") == "pending":
@@ -749,6 +752,203 @@ def handle_all_messages(message):
                     bot.send_message(message.chat.id, "❌ <b>ভুল তারিখ ফরম্যাট! সঠিকভাবে YYYY-MM-DD আকারে দিন (যেমন: 2026-08-22)</b>", parse_mode="HTML")
                 update_user_field(uid, "state", None)
                 return
+            elif state == "set_sheet_ins":
+                set_config("sheet_id_ins", txt)
+                update_user_field(uid, "state", None)
+                bot.send_message(message.chat.id, "✅ <b>Instagram Sheet ID Saved!</b>", parse_mode="HTML", reply_markup=get_admin_menu())
+                return
+            elif state == "set_sheet_fb":
+                set_config("sheet_id_fb", txt)
+                update_user_field(uid, "state", None)
+                bot.send_message(message.chat.id, "✅ <b>Facebook Sheet ID Saved!</b>", parse_mode="HTML", reply_markup=get_admin_menu())
+                return
+            elif state == "set_sheet_gmail":
+                set_config("sheet_id_gmail", txt)
+                update_user_field(uid, "state", None)
+                bot.send_message(message.chat.id, "✅ <b>Gmail Sheet ID Saved!</b>", parse_mode="HTML", reply_markup=get_admin_menu())
+                return
+            elif state == "set_json_creds":
+                if message.document:
+                    file_info = bot.get_file(message.document.file_id)
+                    downloaded_file = bot.download_file(file_info.file_path)
+                    set_config("json_credentials", downloaded_file.decode('utf-8'))
+                else:
+                    set_config("json_credentials", txt)
+                update_user_field(uid, "state", None)
+                bot.send_message(message.chat.id, "✅ <b>Google Cloud Service Account JSON Saved!</b>", parse_mode="HTML", reply_markup=get_admin_menu())
+                return
+            elif state == "set_firebase_api":
+                if message.document:
+                    file_info = bot.get_file(message.document.file_id)
+                    downloaded_file = bot.download_file(file_info.file_path)
+                    set_config("firebase_api", downloaded_file.decode('utf-8'))
+                else:
+                    set_config("firebase_api", txt)
+                update_user_field(uid, "state", None)
+                bot.send_message(message.chat.id, "✅ <b>Firebase API Config Saved!</b>", parse_mode="HTML", reply_markup=get_admin_menu())
+                return
+            elif state == "set_recovery_email":
+                set_config("recovery_email", txt)
+                update_user_field(uid, "state", None)
+                bot.send_message(message.chat.id, f"✅ <b>Recovery Email Set to: <code>{txt}</code></b>", parse_mode="HTML", reply_markup=get_admin_menu())
+                return
+            elif state == "set_ref_bonus":
+                set_config("ref_bonus", txt)
+                update_user_field(uid, "state", None)
+                bot.send_message(message.chat.id, f"✅ <b>Refer Bonus Set to: ৳{txt}</b>", parse_mode="HTML", reply_markup=get_admin_menu())
+                return
+            elif state == "set_pass_ins":
+                set_config("ins_pass", txt)
+                update_user_field(uid, "state", None)
+                bot.send_message(message.chat.id, f"✅ <b>Instagram Password Base Set to: <code>{txt}</code></b>", parse_mode="HTML", reply_markup=get_admin_menu())
+                return
+            elif state == "set_pass_fb":
+                set_config("fb_pass", txt)
+                update_user_field(uid, "state", None)
+                bot.send_message(message.chat.id, f"✅ <b>Facebook Password Base Set to: <code>{txt}</code></b>", parse_mode="HTML", reply_markup=get_admin_menu())
+                return
+            elif state == "set_pass_gmail":
+                set_config("gmail_pass", txt)
+                update_user_field(uid, "state", None)
+                bot.send_message(message.chat.id, f"✅ <b>Gmail Password Base Set to: <code>{txt}</code></b>", parse_mode="HTML", reply_markup=get_admin_menu())
+                return
+            elif state == "set_spin_reward":
+                set_config("spin_reward", txt)
+                update_user_field(uid, "state", None)
+                bot.send_message(message.chat.id, f"✅ <b>Spin Reward Set to: ৳{txt}</b>", parse_mode="HTML", reply_markup=get_admin_menu())
+                return
+            elif state == "set_spin_limit":
+                set_config("spin_limit", txt)
+                update_user_field(uid, "state", None)
+                bot.send_message(message.chat.id, f"✅ <b>Spin Daily Limit Set to: {txt} Times</b>", parse_mode="HTML", reply_markup=get_admin_menu())
+                return
+            elif state == "set_spin_url":
+                set_config("spin_ad_url", txt)
+                update_user_field(uid, "state", None)
+                bot.send_message(message.chat.id, f"✅ <b>Adsterra Direct Link Set to: <code>{txt}</code></b>", parse_mode="HTML", reply_markup=get_admin_menu())
+                return
+            elif state == "admin_ban_user":
+                if txt.isdigit():
+                    update_user_field(int(txt), "is_banned", 1)
+                    log_admin_action(uid, f"Banned User {txt}")
+                    bot.send_message(message.chat.id, f"⛔ <b>User <code>{txt}</code> has been BANNED!</b>", parse_mode="HTML", reply_markup=get_admin_menu())
+                else: bot.send_message(message.chat.id, "❌ <b>ইনভ্যালিড ইউজার আইডি!</b>", parse_mode="HTML")
+                update_user_field(uid, "state", None)
+                return
+            elif state == "admin_unban_user":
+                if txt.isdigit():
+                    update_user_field(int(txt), "is_banned", 0)
+                    log_admin_action(uid, f"Unbanned User {txt}")
+                    bot.send_message(message.chat.id, f"✅ <b>User <code>{txt}</code> has been UNBANNED!</b>", parse_mode="HTML", reply_markup=get_admin_menu())
+                else: bot.send_message(message.chat.id, "❌ <b>ইনভ্যালিড ইউজার আইডি!</b>", parse_mode="HTML")
+                update_user_field(uid, "state", None)
+                return
+            elif state == "admin_add_bal_id":
+                temp = json.loads(u.get("temp_data") or "{}")
+                temp["target_user"] = txt
+                update_user_field(uid, "temp_data", json.dumps(temp))
+                update_user_field(uid, "state", "admin_add_bal_amt")
+                bot.send_message(message.chat.id, "💰 <b>কত টাকা ব্যালেন্স যোগ করতে চান? (যেমন: 50):</b>", parse_mode="HTML")
+                return
+            elif state == "admin_add_bal_amt":
+                try:
+                    amt = float(txt)
+                    temp = json.loads(u.get("temp_data") or "{}")
+                    target = temp.get("target_user")
+                    t_u = get_user_db(target)
+                    fb_update(f"users/{target}", {"balance": float(t_u.get("balance", 0)) + amt})
+                    log_admin_action(uid, f"Added ৳{amt} balance to User {target}")
+                    bot.send_message(message.chat.id, f"✅ <b>User <code>{target}</code> এর সাথে ৳{amt} যোগ করা হয়েছে!</b>", parse_mode="HTML", reply_markup=get_admin_menu())
+                    try: bot.send_message(target, f"🎉 <b>এডমিন আপনার অ্যাকাউন্টে ৳{amt} যোগ করেছেন!</b>", parse_mode="HTML")
+                    except: pass
+                except: bot.send_message(message.chat.id, "❌ <b>ইনভ্যালিড অ্যামাউন্ট!</b>", parse_mode="HTML", reply_markup=get_admin_menu())
+                update_user_field(uid, "state", None)
+                return
+            elif state == "admin_ded_bal_id":
+                temp = json.loads(u.get("temp_data") or "{}")
+                temp["target_user"] = txt
+                update_user_field(uid, "temp_data", json.dumps(temp))
+                update_user_field(uid, "state", "admin_ded_bal_amt")
+                bot.send_message(message.chat.id, "💰 <b>কত টাকা ব্যালেন্স কাটতে চান? (যেমন: 20):</b>", parse_mode="HTML")
+                return
+            elif state == "admin_ded_bal_amt":
+                try:
+                    amt = float(txt)
+                    temp = json.loads(u.get("temp_data") or "{}")
+                    target = temp.get("target_user")
+                    t_u = get_user_db(target)
+                    new_bal = max(0.0, float(t_u.get("balance", 0)) - amt)
+                    fb_update(f"users/{target}", {"balance": new_bal})
+                    log_admin_action(uid, f"Deducted ৳{amt} balance from User {target}")
+                    bot.send_message(message.chat.id, f"✅ <b>User <code>{target}</code> এর অ্যাকাউন্ট থেকে ৳{amt} কাটা হয়েছে!</b>", parse_mode="HTML", reply_markup=get_admin_menu())
+                except: bot.send_message(message.chat.id, "❌ <b>ইনভ্যালিড অ্যামাউন্ট!</b>", parse_mode="HTML", reply_markup=get_admin_menu())
+                update_user_field(uid, "state", None)
+                return
+            elif state == "add_subadmin_id":
+                temp = json.loads(u.get("temp_data") or "{}")
+                temp["target_sub"] = txt
+                update_user_field(uid, "temp_data", json.dumps(temp))
+                update_user_field(uid, "state", "add_subadmin_perms")
+                bot.send_message(message.chat.id, "👑 <b>Sub-Admin Permissions JSON দিন (যেমন: {\"admin\": true}):</b>", parse_mode="HTML")
+                return
+            elif state == "add_subadmin_perms":
+                temp = json.loads(u.get("temp_data") or "{}")
+                target = temp.get("target_sub")
+                fb_update(f"users/{target}", {"role": "sub_admin", "permissions": txt})
+                update_user_field(uid, "state", None)
+                bot.send_message(message.chat.id, f"✅ <b>User <code>{target}</code> কে Sub-Admin করা হয়েছে!</b>", parse_mode="HTML", reply_markup=get_admin_menu())
+                return
+            elif state == "set_tut_gmail":
+                vids = json.loads(get_config("tutorial_videos", "{}"))
+                vids["gmail"] = txt
+                set_config("tutorial_videos", json.dumps(vids))
+                update_user_field(uid, "state", None)
+                bot.send_message(message.chat.id, "✅ <b>Gmail Tutorial Link Saved!</b>", parse_mode="HTML", reply_markup=get_admin_menu())
+                return
+            elif state == "set_tut_fb":
+                vids = json.loads(get_config("tutorial_videos", "{}"))
+                vids["fb"] = txt
+                set_config("tutorial_videos", json.dumps(vids))
+                update_user_field(uid, "state", None)
+                bot.send_message(message.chat.id, "✅ <b>Facebook Tutorial Link Saved!</b>", parse_mode="HTML", reply_markup=get_admin_menu())
+                return
+            elif state == "set_tut_ins":
+                vids = json.loads(get_config("tutorial_videos", "{}"))
+                vids["ins"] = txt
+                set_config("tutorial_videos", json.dumps(vids))
+                update_user_field(uid, "state", None)
+                bot.send_message(message.chat.id, "✅ <b>Instagram Tutorial Link Saved!</b>", parse_mode="HTML", reply_markup=get_admin_menu())
+                return
+            elif state == "user_deep_search_id":
+                s_u = get_user_db(txt)
+                info = (f"🔍 <b>USER DEEP DATA SEARCH</b>\n\n"
+                        f"<b>ID:</b> <code>{s_u.get('user_id')}</code>\n"
+                        f"<b>Balance:</b> ৳{float(s_u.get('balance', 0)):.2f}\n"
+                        f"<b>Referred By:</b> <code>{s_u.get('referred_by')}</code>\n"
+                        f"<b>Total Income:</b> ৳{float(s_u.get('total_income', 0)):.2f}\n"
+                        f"<b>Is Banned:</b> {s_u.get('is_banned')}\n"
+                        f"<b>Role:</b> {s_u.get('role')}")
+                bot.send_message(message.chat.id, info, parse_mode="HTML", reply_markup=get_admin_menu())
+                update_user_field(uid, "state", None)
+                return
+            elif state == "broadcast_msg_input":
+                users = fb_get("users") or {}
+                count = 0
+                for target_id in users.keys():
+                    try:
+                        bot.send_message(target_id, message.text, parse_mode="HTML")
+                        count += 1
+                        time.sleep(0.04)
+                    except: pass
+                bot.send_message(message.chat.id, f"✅ <b>স্মার্ট ব্রডকাস্ট সম্পূর্ণ! মোট {count} জন ইউজারকে পাঠানো হয়েছে।</b>", parse_mode="HTML", reply_markup=get_admin_menu())
+                update_user_field(uid, "state", None)
+                return
+            elif state == "add_app_task_data":
+                task_id = f"task_{random.randint(100, 999)}"
+                fb_set(f"extra_app_tasks/{task_id}", {"title": txt, "reward": 5.0, "status": "active"})
+                bot.send_message(message.chat.id, "✅ <b>নতুন অ্যাপস/টেলিগ্রাম টাস্ক যুক্ত হয়েছে!</b>", parse_mode="HTML", reply_markup=get_admin_menu())
+                update_user_field(uid, "state", None)
+                return
 
         # --- USER TASK PROOF SUBMISSION ---
         if message.photo and state and state.startswith("sub_app_proof_"):
@@ -764,9 +964,9 @@ def handle_all_messages(message):
                 "status": "pending",
                 "created_at": time.time()
             }
-            db.child("pending_submissions").child(sub_id).set(sub_data)
-            db.child("completed_app_tasks").child(str(uid)).child(str(task_id)).set(True)
-            db.child("users").child(str(uid)).child("pending_tasks").set(int(u.get("pending_tasks", 0)) + 1)
+            fb_set(f"pending_submissions/{sub_id}", sub_data)
+            fb_set(f"completed_app_tasks/{uid}/{task_id}", True)
+            fb_update(f"users/{uid}", {"pending_tasks": int(u.get("pending_tasks", 0)) + 1})
 
             update_user_field(uid, "state", None)
             bot.send_message(message.chat.id, "✅ <b>আপনার প্রুফ স্ক্রিনশট জমা হয়েছে!</b> এডমিন চেক করে এপ্রুভ করলে ব্যালেন্স যোগ হবে।", parse_mode="HTML", reply_markup=get_main_menu(uid))
@@ -787,7 +987,7 @@ def handle_all_messages(message):
                 "status": "pending",
                 "created_at": time.time()
             }
-            db.child("support_tickets").child(t_id).set(ticket_data)
+            fb_set(f"support_tickets/{t_id}", ticket_data)
 
             update_user_field(uid, "state", None)
             bot.send_message(message.chat.id, f"✅ <b>আপনার সাপোর্ট টিকিট জমা নেওয়া হয়েছে!</b>\nTicket ID: <code>{t_id}</code>", parse_mode="HTML", reply_markup=get_main_menu(uid))
@@ -837,8 +1037,8 @@ def handle_all_messages(message):
                 "status": "pending",
                 "created_at": time.time()
             }
-            db.child("pending_submissions").child(sub_id).set(sub_data)
-            db.child("users").child(str(uid)).child("pending_tasks").set(int(u.get("pending_tasks", 0)) + 1)
+            fb_set(f"pending_submissions/{sub_id}", sub_data)
+            fb_update(f"users/{uid}", {"pending_tasks": int(u.get("pending_tasks", 0)) + 1})
 
             append_to_google_sheet("fb", [sub_id, uid, temp.get("fn"), temp.get("ln"), temp.get("fb_uid"), temp.get("pass"), txt, "Pending", datetime.now().strftime("%Y-%m-%d %H:%M")])
 
@@ -917,8 +1117,8 @@ def handle_all_messages(message):
                 "status": "pending",
                 "created_at": time.time()
             }
-            db.child("withdraw_requests").child(req_id).set(req_data)
-            db.child("users").child(str(uid)).update({
+            fb_set(f"withdraw_requests/{req_id}", req_data)
+            fb_update(f"users/{uid}", {
                 "balance": bal - amt,
                 "total_withdraw": float(u.get("total_withdraw", 0.0)) + amt
             })
@@ -995,8 +1195,8 @@ def handle_all_messages(message):
                 "status": "pending",
                 "created_at": time.time()
             }
-            db.child("pending_submissions").child(sub_id).set(sub_data)
-            db.child("users").child(str(uid)).child("pending_tasks").set(int(u.get("pending_tasks", 0)) + 1)
+            fb_set(f"pending_submissions/{sub_id}", sub_data)
+            fb_update(f"users/{uid}", {"pending_tasks": int(u.get("pending_tasks", 0)) + 1})
 
             append_to_google_sheet("ins", [sub_id, uid, temp.get("username"), temp.get("pass"), temp.get("2fa_secret"), "Pending", datetime.now().strftime("%Y-%m-%d %H:%M")])
 
@@ -1084,8 +1284,8 @@ def handle_all_messages(message):
                 "status": "pending",
                 "created_at": time.time()
             }
-            db.child("pending_submissions").child(sub_id).set(sub_data)
-            db.child("users").child(str(uid)).child("pending_tasks").set(int(u.get("pending_tasks", 0)) + 1)
+            fb_set(f"pending_submissions/{sub_id}", sub_data)
+            fb_update(f"users/{uid}", {"pending_tasks": int(u.get("pending_tasks", 0)) + 1})
 
             rec_email = get_config("recovery_email", "tasrikvai8001@gmail.com")
             append_to_google_sheet("gmail", [sub_id, uid, temp.get("email"), temp.get("pass"), rec_email, "Pending", datetime.now().strftime("%Y-%m-%d %H:%M")])
@@ -1124,7 +1324,7 @@ def handle_all_messages(message):
             link = f"https://t.me/{bot_uname}?start={uid}"
             bonus = get_config("ref_bonus", "10.0")
             msg = (f"{get_emoji('invite')} <b>REFER & EARN!</b>\n\n"
-                   f"আপনার রেফারেল লিংক:\n<code>{link}</code>\n\n"
+                   f"আপনার রেফার লিংক:\n<code>{link}</code>\n\n"
                    f"💡 নিয়ম: আপনার লিংক থেকে কোনো ইউজার জয়েন করে ১ম কাজ শেষ করলে পাবেন <b>৳{bonus}</b> এবং তার সারাজীবনের কাজের ওপর পাবেন <b>১০% লাইফটাইম কমিশন!</b>")
             bot.send_message(message.chat.id, msg, parse_mode="HTML")
 
@@ -1167,7 +1367,6 @@ def handle_all_messages(message):
             )
             bot.send_message(message.chat.id, "📥 <b>কোন সার্ভিসের Unsold ফাইল এক্সপোর্ট করতে চান?</b>", parse_mode="HTML", reply_markup=markup)
 
-        # Other Admin Commands
         elif txt == "💰 Set Task Rates" and check_permission(uid, "admin"):
             markup = InlineKeyboardMarkup(row_width=1)
             markup.add(
@@ -1177,17 +1376,135 @@ def handle_all_messages(message):
             )
             bot.send_message(message.chat.id, "💰 <b>কাজের রেট সেটিং:</b>", parse_mode="HTML", reply_markup=markup)
 
+        elif txt == "🎁 Set Ref Bonus" and check_permission(uid, "admin"):
+            update_user_field(uid, "state", "set_ref_bonus")
+            bot.send_message(message.chat.id, f"🎁 <b>নতুন রেফার বোনাস দিন (বর্তমান: ৳{get_config('ref_bonus')}):</b>", parse_mode="HTML")
+
+        elif txt == "🔑 Set Passwords Base" and check_permission(uid, "admin"):
+            markup = InlineKeyboardMarkup(row_width=1)
+            markup.add(
+                ibtn(f"📸 Ins Base Pass ({get_config('ins_pass')})", callback_data="set_pass_ins", style="primary"),
+                ibtn(f"📘 FB Base Pass ({get_config('fb_pass')})", callback_data="set_pass_fb", style="primary"),
+                ibtn(f"📧 Gmail Base Pass ({get_config('gmail_pass')})", callback_data="set_pass_gmail", style="primary")
+            )
+            bot.send_message(message.chat.id, "🔑 <b>পাসওয়ার্ড বেস নেম ম্যানেজমেন্ট:</b>", parse_mode="HTML", reply_markup=markup)
+
+        elif txt == "🌀 Spin & Ad Settings" and check_permission(uid, "admin"):
+            markup = InlineKeyboardMarkup(row_width=1)
+            markup.add(
+                ibtn(f"💰 Set Spin Reward (৳{get_config('spin_reward')})", callback_data="set_spin_reward", style="primary"),
+                ibtn(f"🌀 Set Spin Limit ({get_config('spin_limit')} Times)", callback_data="set_spin_limit", style="primary"),
+                ibtn("🌐 Set Adsterra Direct Link", callback_data="set_spin_url", style="primary")
+            )
+            bot.send_message(message.chat.id, "🌀 <b>স্পিন ও এডস সেটিং:</b>", parse_mode="HTML", reply_markup=markup)
+
+        elif txt == "📊 Google Sheets Config" and check_permission(uid, "admin"):
+            markup = InlineKeyboardMarkup(row_width=1)
+            markup.add(
+                ibtn("📸 Instagram Sheet ID", callback_data="set_sheet_ins", style="primary"),
+                ibtn("📘 Facebook Sheet ID", callback_data="set_sheet_fb", style="primary"),
+                ibtn("📧 Gmail Sheet ID", callback_data="set_sheet_gmail", style="primary")
+            )
+            bot.send_message(message.chat.id, "📊 <b>গুগল শিট কানেকশন ম্যানেজার:</b>", parse_mode="HTML", reply_markup=markup)
+
+        elif txt == "🤖 Upload JSON Creds" and check_permission(uid, "admin"):
+            update_user_field(uid, "state", "set_json_creds")
+            bot.send_message(message.chat.id, "📄 <b>Google Service Account `credentials.json` ফাইলটি পাঠান বা টেক্সট আকারে পেস্ট করুন:</b>", parse_mode="HTML")
+
+        elif txt == "🔥 Set Firebase API" and check_permission(uid, "admin"):
+            update_user_field(uid, "state", "set_firebase_api")
+            bot.send_message(message.chat.id, "🔥 <b>Firebase API Key দিন:</b>", parse_mode="HTML")
+
+        elif txt == "🔄 Sync Google Sheet Approval" and check_permission(uid, "admin"):
+            bot.send_message(message.chat.id, "⏳ <b>গুগল শিটের সাথে সিঙ্ক হচ্ছে...</b>", parse_mode="HTML")
+            cnt = sync_sheet_approvals()
+            bot.send_message(message.chat.id, f"✅ <b>সিঙ্ক সম্পন্ন! মোট {cnt} টি সাবমিশন আপডেট হয়েছে।</b>", parse_mode="HTML")
+
+        elif txt == "⛔ Ban/Unban User" and check_permission(uid, "admin"):
+            markup = InlineKeyboardMarkup(row_width=2)
+            markup.add(
+                ibtn("⛔ Ban User", callback_data="admin_ban_user", style="danger"),
+                ibtn("✅ Unban User", callback_data="admin_unban_user", style="success")
+            )
+            bot.send_message(message.chat.id, "⛔ <b>ইউজার ব্যান/আনব্যান ম্যানেজার:</b>", parse_mode="HTML", reply_markup=markup)
+
+        elif txt == "➕ Add/Deduct Balance" and check_permission(uid, "admin"):
+            markup = InlineKeyboardMarkup(row_width=2)
+            markup.add(
+                ibtn("➕ Add Balance", callback_data="admin_add_bal_id", style="success"),
+                ibtn("➖ Deduct Balance", callback_data="admin_ded_bal_id", style="danger")
+            )
+            bot.send_message(message.chat.id, "💰 <b>ইউজার ব্যালেন্স কন্ট্রোল:</b>", parse_mode="HTML", reply_markup=markup)
+
+        elif txt == "👑 Sub-Admin Manager" and check_permission(uid, "admin"):
+            update_user_field(uid, "state", "add_subadmin_id")
+            bot.send_message(message.chat.id, "👑 <b>যাকে Sub-Admin করতে চান তার Telegram ID দিন:</b>", parse_mode="HTML")
+
+        elif txt == "📧 Set Recovery Email" and check_permission(uid, "admin"):
+            update_user_field(uid, "state", "set_recovery_email")
+            bot.send_message(message.chat.id, f"📧 <b>নতুন ریکভারি ইমেইল দিন (বর্তমান: <code>{get_config('recovery_email')}</code>):</b>", parse_mode="HTML")
+
+        elif txt == "🎥 Set Tutorial Videos" and check_permission(uid, "admin"):
+            markup = InlineKeyboardMarkup(row_width=1)
+            markup.add(
+                ibtn("📧 Gmail Tutorial Video Link", callback_data="set_tut_gmail", style="primary"),
+                ibtn("📘 FB Tutorial Video Link", callback_data="set_tut_fb", style="primary"),
+                ibtn("📸 Ins Tutorial Video Link", callback_data="set_tut_ins", style="primary")
+            )
+            bot.send_message(message.chat.id, "🎥 <b>টিউটোরিয়াল ভিডিও লিঙ্ক সেটিং:</b>", parse_mode="HTML", reply_markup=markup)
+
+        elif txt == "🔍 User Deep Search" and check_permission(uid, "admin"):
+            update_user_field(uid, "state", "user_deep_search_id")
+            bot.send_message(message.chat.id, "🔍 <b>যে ইউজারের তথ্য দেখতে চান তার Telegram ID দিন:</b>", parse_mode="HTML")
+
+        elif txt == "📩 Smart Broadcast Message" and check_permission(uid, "admin"):
+            update_user_field(uid, "state", "broadcast_msg_input")
+            bot.send_message(message.chat.id, "📢 <b>সকল ইউজারের কাছে যে মেসেজ পাঠাতে চান তা লিখুন (HTML Support):</b>", parse_mode="HTML")
+
+        elif txt == "⏸️ Task Pause Manager" and check_permission(uid, "admin"):
+            p_gmail = get_config("pause_gmail", "false")
+            p_fb = get_config("pause_fb", "false")
+            p_ins = get_config("pause_ins", "false")
+            markup = InlineKeyboardMarkup(row_width=1)
+            markup.add(
+                ibtn(f"📧 Gmail Task: {'Paused ⏸️' if p_gmail=='true' else 'Active ▶️'}", callback_data="tog_pause_gmail", style="primary"),
+                ibtn(f"📘 FB Task: {'Paused ⏸️' if p_fb=='true' else 'Active ▶️'}", callback_data="tog_pause_fb", style="primary"),
+                ibtn(f"📸 Ins Task: {'Paused ⏸️' if p_ins=='true' else 'Active ▶️'}", callback_data="tog_pause_ins", style="primary")
+            )
+            bot.send_message(message.chat.id, "⏸️ <b>Task Pause Manager:</b>", parse_mode="HTML", reply_markup=markup)
+
+        elif txt == "➕ Add App/TG Task" and check_permission(uid, "admin"):
+            update_user_field(uid, "state", "add_app_task_data")
+            bot.send_message(message.chat.id, "📲 <b>নতুন অ্যাপস বা চ্যানেল টাস্কের বিস্তারিত বিবরণ লিখুন:</b>", parse_mode="HTML")
+
+        elif txt == "🧹 Database Cleanup" and check_permission(uid, "admin"):
+            fb_delete("submitted_records")
+            bot.send_message(message.chat.id, "🧹 <b>পুরাতন সাবমিশন রেকর্ড ও ক্যাশ সফলভাবে ক্লিয়ার করা হয়েছে!</b>", parse_mode="HTML")
+
+        elif txt == "🚨 Error Logs" and check_permission(uid, "admin"):
+            if os.path.exists(LOG_FILE):
+                with open(LOG_FILE, "rb") as f:
+                    bot.send_document(message.chat.id, f, caption="🚨 <b>System Error Logs File</b>", parse_mode="HTML")
+            else:
+                bot.send_message(message.chat.id, "✅ <b>কোনো এরর লগ নেই! সিস্টেম সম্পূর্ণ ক্লিন।</b>", parse_mode="HTML")
+
+        elif txt == "⚡ Maintenance Mode" and check_permission(uid, "admin"):
+            curr = get_config("maintenance_mode", "false")
+            new_val = "true" if curr == "false" else "false"
+            set_config("maintenance_mode", new_val)
+            bot.send_message(message.chat.id, f"⚡ <b>Maintenance Mode is now: {'ON 🔴' if new_val=='true' else 'OFF 🟢'}</b>", parse_mode="HTML")
+
         elif txt == "📊 Bot Statistics" and check_permission(uid, "admin"):
-            users = db.child("users").get().val() or {}
+            users = fb_get("users") or {}
             total_users = len(users)
             day_ago = time.time() - 86400
             active_users = sum(1 for u_id, u_data in users.items() if float(u_data.get("last_active", 0)) >= day_ago)
             
-            subs = db.child("pending_submissions").get().val() or {}
+            subs = fb_get("pending_submissions") or {}
             total_tasks = len(subs)
             tot_income = sum(float(s.get("rate", 0)) for s_id, s in subs.items() if s.get("status") == "approved")
 
-            reqs = db.child("withdraw_requests").get().val() or {}
+            reqs = fb_get("withdraw_requests") or {}
             tot_withdraw = sum(float(r.get("amount", 0)) for r_id, r in reqs.items() if r.get("status") == "approved")
 
             msg = (f"📊 <b>BOT STATISTICS & OVERVIEW</b>\n\n"
@@ -1264,7 +1581,7 @@ def handle_callbacks(call):
                 bot.answer_callback_query(call.id, f"❌ লিমিট অতিক্রান্ত হয়েছে!", show_alert=True)
                 return
 
-            db.child("users").child(str(uid)).update({
+            fb_update(f"users/{uid}", {
                 "balance": float(u.get("balance", 0)) + reward,
                 "total_income": float(u.get("total_income", 0)) + reward,
                 "daily_spins": daily_spins + 1,
@@ -1274,19 +1591,71 @@ def handle_callbacks(call):
             bot.answer_callback_query(call.id, f"🎉 ভেরিফাইড! আপনি ৳{reward} পেয়েছেন!", show_alert=True)
             bot.send_message(call.message.chat.id, f"🎉 <b>অভিনন্দন! আপনি সফলভাবে ৳{reward} আয় করেছেন!</b>\nআজকে আর স্পিন বাকি: {limit - (daily_spins + 1)} টি", parse_mode="HTML", reply_markup=get_main_menu(uid))
 
-        # --- ADMIN FORCE JOIN MANAGEMENT ---
-        elif call.data == "add_force_channel":
-            update_user_field(uid, "state", "add_force_channel_input")
-            bot.send_message(call.message.chat.id, "📢 <b>নতুন চ্যানেল ইউজারনেম দিন (যেমন: @ChannelUsername):</b>", parse_mode="HTML")
+        elif call.data == "open_support_ticket":
+            update_user_field(uid, "state", "user_submit_ticket")
+            bot.send_message(call.message.chat.id, "📩 <b>আপনার অভিযোগ বা প্রশ্নটি বিস্তারিত লিখুন:</b>", parse_mode="HTML")
 
-        elif call.data.startswith("rem_force_"):
-            target_ch = call.data.replace("rem_force_", "")
-            chs = json.loads(get_config("force_channels", "[]"))
-            if target_ch in chs:
-                chs.remove(target_ch)
-                set_config("force_channels", json.dumps(chs))
-                bot.answer_callback_query(call.id, f"✅ {target_ch} রিমুভ করা হয়েছে!")
-            bot.send_message(call.message.chat.id, "📢 <b>Force Join চ্যানেল তালিকা আপডেট হয়েছে!</b>", parse_mode="HTML", reply_markup=get_admin_menu())
+        elif call.data.startswith("with_meth_"):
+            meth = call.data.replace("with_meth_", "")
+            update_user_field(uid, "state", f"withdraw_number_{meth}")
+            bot.send_message(call.message.chat.id, f"💳 <b>আপনার {meth} অ্যাকাউন্ট নম্বরটি লিখুন:</b>", parse_mode="HTML")
+
+        elif call.data.startswith("watch_vid_"):
+            s_type = call.data.replace("watch_vid_", "")
+            vids = json.loads(get_config("tutorial_videos", "{}"))
+            v_url = vids.get(s_type, "")
+            if v_url:
+                bot.send_message(call.message.chat.id, f"🎬 <b>{s_type.upper()} Tutorial Video Link:</b>\n{v_url}", parse_mode="HTML")
+            else:
+                bot.answer_callback_query(call.id, "❌ বর্তমানে কোনো ভিডিও টিউটোরিয়াল যুক্ত নেই!", show_alert=True)
+
+        elif call.data.startswith("pay_with_") and check_permission(uid, "admin"):
+            req_id = call.data.replace("pay_with_", "")
+            req_data = fb_get(f"withdraw_requests/{req_id}")
+            if req_data:
+                fb_update(f"withdraw_requests/{req_id}", {"status": "approved"})
+                target_uid = req_data.get("user_id")
+                bot.answer_callback_query(call.id, "✅ Marked as Paid!")
+                try: bot.send_message(target_uid, f"🎉 <b>আপনার ৳{req_data.get('amount')} এর উইথড্র সফল হয়েছে!</b>\nMethod: {req_data.get('method')}", parse_mode="HTML")
+                except: pass
+
+        elif call.data.startswith("ref_with_") and check_permission(uid, "admin"):
+            req_id = call.data.replace("ref_with_", "")
+            req_data = fb_get(f"withdraw_requests/{req_id}")
+            if req_data:
+                amt = float(req_data.get("amount", 0))
+                target_uid = req_data.get("user_id")
+                t_u = get_user_db(target_uid)
+                fb_update(f"users/{target_uid}", {"balance": float(t_u.get("balance", 0)) + amt})
+                fb_update(f"withdraw_requests/{req_id}", {"status": "rejected"})
+                bot.answer_callback_query(call.id, "❌ Refunded to balance!")
+                try: bot.send_message(target_uid, f"❌ <b>আপনার উইথড্র রিকোয়েস্ট রিজেক্ট করে ব্যালেন্স ৳{amt} ফেরত দেওয়া হয়েছে।</b>", parse_mode="HTML")
+                except: pass
+
+        # --- ADMIN CALLBACK CONTROLS ---
+        elif call.data.startswith("tog_pause_"):
+            target_serv = call.data.replace("tog_pause_", "")
+            curr = get_config(f"pause_{target_serv}", "false")
+            new_val = "true" if curr == "false" else "false"
+            set_config(f"pause_{target_serv}", new_val)
+            bot.answer_callback_query(call.id, f"✅ {target_serv.upper()} state updated!")
+            bot.send_message(call.message.chat.id, f"<b>{target_serv.upper()} Task Pause state is now: {new_val}</b>", parse_mode="HTML", reply_markup=get_admin_menu())
+
+        elif call.data in ["set_rate_ins", "set_rate_fb", "set_rate_gmail"] and check_permission(uid, "admin"):
+            update_user_field(uid, "state", call.data)
+            bot.send_message(call.message.chat.id, f"💰 <b>নতুন রেট লিখুন:</b>", parse_mode="HTML")
+
+        elif call.data in ["set_pass_ins", "set_pass_fb", "set_pass_gmail"] and check_permission(uid, "admin"):
+            update_user_field(uid, "state", call.data)
+            bot.send_message(call.message.chat.id, "🔑 <b>নতুন পাসওয়ার্ড বেস নেম লিখুন:</b>", parse_mode="HTML")
+
+        elif call.data in ["set_sheet_ins", "set_sheet_fb", "set_sheet_gmail"] and check_permission(uid, "admin"):
+            update_user_field(uid, "state", call.data)
+            bot.send_message(call.message.chat.id, "📊 <b>Google Sheet ID দিন:</b>", parse_mode="HTML")
+
+        elif call.data in ["set_spin_reward", "set_spin_limit", "set_spin_url", "admin_ban_user", "admin_unban_user", "admin_add_bal_id", "admin_ded_bal_id", "set_tut_gmail", "set_tut_fb", "set_tut_ins"] and check_permission(uid, "admin"):
+            update_user_field(uid, "state", call.data)
+            bot.send_message(call.message.chat.id, "👉 <b>তথ্য দিন:</b>", parse_mode="HTML")
 
         # --- EXPORT DATEWISE MENU HANDLERS ---
         elif call.data.startswith("exp_menu_"):
@@ -1306,7 +1675,7 @@ def handle_callbacks(call):
             target_dt = datetime.now().date() if is_today else (datetime.now() - timedelta(days=1)).date()
             dt_str = target_dt.strftime("%Y-%m-%d")
 
-            all_subs = db.child("pending_submissions").get().val() or {}
+            all_subs = fb_get("pending_submissions") or {}
             matched = []
             for sid, s in all_subs.items():
                 if s.get("sub_type") == serv and s.get("status") == "pending":
@@ -1344,13 +1713,13 @@ def handle_callbacks(call):
             target_dt_str = parts[3]
             target_dt = datetime.strptime(target_dt_str, "%Y-%m-%d").date()
 
-            all_subs = db.child("pending_submissions").get().val() or {}
+            all_subs = fb_get("pending_submissions") or {}
             deleted_count = 0
             for sid, s in all_subs.items():
                 if s.get("sub_type") == serv and s.get("status") == "pending":
                     s_date = datetime.fromtimestamp(float(s.get("created_at", 0))).date()
                     if s_date == target_dt:
-                        db.child("pending_submissions").child(sid).remove()
+                        fb_delete(f"pending_submissions/{sid}")
                         deleted_count += 1
 
             bot.answer_callback_query(call.id, f"🗑️ {deleted_count} টি ডাটা মুছে ফেলা হয়েছে!", show_alert=True)
@@ -1366,3 +1735,4 @@ if __name__ == "__main__":
     keep_alive()
     print(f"🚀 {BOT_NAME} Firebase Production Engine running safely...")
     bot.infinity_polling(skip_pending=True)
+```eof
