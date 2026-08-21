@@ -1735,4 +1735,3 @@ if __name__ == "__main__":
     keep_alive()
     print(f"🚀 {BOT_NAME} Firebase Production Engine running safely...")
     bot.infinity_polling(skip_pending=True)
-```eof
